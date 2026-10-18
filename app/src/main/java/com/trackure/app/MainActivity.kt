@@ -68,6 +68,16 @@ fun TrackureMainAppShell() {
             }
         }
     )
+    val addViewModel: com.trackure.app.presentation.add.AddActivityViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
+        factory = androidx.lifecycle.viewmodel.viewModelFactory {
+            initializer {
+                com.trackure.app.presentation.add.AddActivityViewModel(
+                    com.trackure.app.data.repository.InMemoryTrackureRepository.shared,
+                    com.trackure.app.core.util.DeferredLockscreenAlarmScheduler,
+                )
+            }
+        }
+    )
     Scaffold(
         containerColor = BackgroundCanvas,
         topBar = {
@@ -79,6 +89,8 @@ fun TrackureMainAppShell() {
             com.trackure.app.presentation.home.HomeRoute(homeViewModel, Modifier.padding(padding))
         } else if (currentTab == TrackureTab.TRACKER) {
             com.trackure.app.presentation.tracker.TrackerRoute(trackerViewModel, Modifier.padding(padding))
+        } else if (currentTab == TrackureTab.ADD) {
+            com.trackure.app.presentation.add.AddActivityScreen(addViewModel, Modifier.padding(padding))
         } else {
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                 Text("${currentTab.label} - coming next", color = TextSecondary)

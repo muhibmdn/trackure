@@ -64,6 +64,7 @@ class InMemoryTrackureRepository private constructor(private val today: LocalDat
         require(item.title.isNotBlank())
         LocalTime.parse(item.scheduledTime)
         require(item.intervalCount > 0 && item.repeatDaysOfWeek.all { it in 1..7 })
+        if (item.frequency == RecurrenceFreq.SPECIFIC_DATE) LocalDate.parse(requireNotNull(item.specificDate))
         if (item.endConditionType == EndConditionType.UNTIL_DATE) LocalDate.parse(requireNotNull(item.endDate))
         if (item.endConditionType == EndConditionType.AFTER_OCCURRENCES) require((item.endOccurrences ?: 0) > 0)
         val saved = item.copy(repeatDaysOfWeek = item.repeatDaysOfWeek.toSet(), updatedAt = Instant.now().toString(), syncStatus = SyncStatus.PENDING_UPLOAD)

@@ -39,6 +39,8 @@ data class ActivityItem(
     val endConditionType: EndConditionType = EndConditionType.NEVER,
     val endDate: String? = null,
     val endOccurrences: Int? = null,
+    val specificDate: String? = null, // Independent of recurrence endDate.
+    val repeatOnSpecificDate: Boolean = false,
     val syncStatus: SyncStatus = SyncStatus.PENDING_UPLOAD,
     val updatedAt: String = Instant.now().toString(),
 )
