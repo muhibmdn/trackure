@@ -58,6 +58,16 @@ fun TrackureMainAppShell() {
             }
         }
     )
+    val trackerViewModel: com.trackure.app.presentation.tracker.TrackerViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
+        factory = androidx.lifecycle.viewmodel.viewModelFactory {
+            initializer {
+                com.trackure.app.presentation.tracker.TrackerViewModel(
+                    com.trackure.app.data.repository.InMemoryTrackureRepository.shared,
+                    com.trackure.app.data.repository.InMemoryTrackureRepository.demoDate,
+                )
+            }
+        }
+    )
     Scaffold(
         containerColor = BackgroundCanvas,
         topBar = {
@@ -67,6 +77,8 @@ fun TrackureMainAppShell() {
     ) { padding ->
         if (currentTab == TrackureTab.HOME) {
             com.trackure.app.presentation.home.HomeRoute(homeViewModel, Modifier.padding(padding))
+        } else if (currentTab == TrackureTab.TRACKER) {
+            com.trackure.app.presentation.tracker.TrackerRoute(trackerViewModel, Modifier.padding(padding))
         } else {
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                 Text("${currentTab.label} - coming next", color = TextSecondary)
