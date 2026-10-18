@@ -1,17 +1,16 @@
 package com.trackure.app
 
 import android.os.Bundle
+import androidx.lifecycle.viewmodel.initializer
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -20,7 +19,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -49,130 +47,33 @@ class MainActivity : ComponentActivity() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TrackureMainAppShell() {
-    var currentTab by remember { mutableStateOf(TrackureTab.HOME) }
-    var showProfileSheet by remember { mutableStateOf(false) }
-
+    var currentTab by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(TrackureTab.HOME) }
+    val homeViewModel: com.trackure.app.presentation.home.HomeViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
+        factory = androidx.lifecycle.viewmodel.viewModelFactory {
+            initializer {
+                com.trackure.app.presentation.home.HomeViewModel(
+                    com.trackure.app.data.repository.InMemoryTrackureRepository.shared,
+                    com.trackure.app.data.repository.InMemoryTrackureRepository.demoDate,
+                )
+            }
+        }
+    )
     Scaffold(
         containerColor = BackgroundCanvas,
         topBar = {
-            if (currentTab == TrackureTab.HOME) {
-                TopAppBar(
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = BackgroundCanvas),
-                    title = {
-                        Column {
-                            Text(
-                                text = "TRACKURE",
-                                fontWeight = FontWeight.ExtraBold,
-                                fontSize = 20.sp,
-                                letterSpacing = 1.5.sp,
-                                color = TextPrimary
-                            )
-                            Text(
-                                text = "One Sure Step Everyday",
-                                fontSize = 11.sp,
-                                color = SportyBluePrimary,
-                                fontFamily = FontFamily.Monospace
-                            )
-                        }
-                    },
-                    actions = {
-                        // Tombol Profil & Settings di Pojok Kanan Atas Home
-                        Box(
-                            modifier = Modifier
-                                .padding(end = 16.dp)
-                                .size(38.dp)
-                                .clip(CircleShape)
-                                .background(SurfaceCard)
-                                .border(2.dp, StravaOrangeHighlight, CircleShape)
-                                .clickable { showProfileSheet = true },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Person,
-                                contentDescription = "Profile & Settings",
-                                tint = TextPrimary,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-                    }
-                )
-            }
+            TopAppBar(title = { Text("TRACKURE", fontWeight = FontWeight.ExtraBold, fontSize = 20.sp, color = TextPrimary) }, colors = TopAppBarDefaults.topAppBarColors(containerColor = BackgroundCanvas))
         },
-        bottomBar = {
-            TrackureBottomBar(
-                selectedTab = currentTab,
-                onTabSelected = { currentTab = it }
-            )
-        }
-    ) { innerPadding ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .padding(16.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = "Halaman Aktif: ${currentTab.label}\n(Siap diisi komponen ${currentTab.name})",
-                color = SportyGreenPrimary,
-                fontFamily = FontFamily.Monospace
-            )
-        }
-
-        // Modal Profil & Settings (Hanya Profil, Login/Logout, dan Switch Account)
-        if (showProfileSheet) {
-            ModalBottomSheet(
-                onDismissRequest = { showProfileSheet = false },
-                containerColor = SurfaceCard
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 24.dp, vertical = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Text(
-                        text = "Profil & Akun",
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = TextPrimary
-                    )
-                    Text(
-                        text = "muhibmdn • One Sure Step Everyday",
-                        fontSize = 13.sp,
-                        color = SportyBluePrimary,
-                        fontFamily = FontFamily.Monospace
-                    )
-                    HorizontalDivider(color = SurfaceBorder, modifier = Modifier.padding(vertical = 4.dp))
-
-                    // Tombol Switch Account
-                    OutlinedButton(
-                        onClick = { /* Trigger Google Credential Manager Switch Account */ },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = SportyBluePrimary)
-                    ) {
-                        Icon(Icons.Default.SwitchAccount, contentDescription = null)
-                        Spacer(Modifier.width(8.dp))
-                        Text("Ganti Akun (Switch Account)")
-                    }
-
-                    // Tombol Login / Logout
-                    Button(
-                        onClick = { showProfileSheet = false },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.buttonColors(containerColor = StravaOrangeHighlight)
-                    ) {
-                        Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = null, tint = Color.White)
-                        Spacer(Modifier.width(8.dp))
-                        Text("Logout / Keluar", color = Color.White, fontWeight = FontWeight.Bold)
-                    }
-                    Spacer(Modifier.height(16.dp))
-                }
+        bottomBar = { TrackureBottomBar(currentTab) { currentTab = it } },
+    ) { padding ->
+        if (currentTab == TrackureTab.HOME) {
+            com.trackure.app.presentation.home.HomeRoute(homeViewModel, Modifier.padding(padding))
+        } else {
+            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
+                Text("${currentTab.label} - coming next", color = TextSecondary)
             }
         }
     }
 }
-
 @Composable
 fun TrackureBottomBar(
     selectedTab: TrackureTab,
@@ -227,7 +128,7 @@ fun TrackureBottomBar(
                         )
                     },
                     colors = NavigationBarItemDefaults.colors(
-                        indicatorColor = SurfaceBorder
+                        indicatorColor = Color.Transparent
                     )
                 )
             }
