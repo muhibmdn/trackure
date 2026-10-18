@@ -11,3 +11,7 @@ The repository contract now accepts optional originalLogId (existing three-argum
 General Daily Note uses the reserved activity ID trackure:general-daily-note, one entry per date, and does not create a scheduled activity. General notes are excluded from completion analytics and activity-history CSV exports. Room/Supabase adapters should preserve this distinction and implement the same atomic note-edit behavior.
 
 Checks: compileDebugKotlin, testDebugUnitTest, lintDebug. Notes integration tests exercise filtering, general-note upserts, collision handling, moves preserving completions, cancel/blank validation, and live cross-controller updates in both directions. Device visual verification remains separate. Persistence/auth/ICS/alarm implementations remain the previously documented next-phase adapters.
+
+The global TRACKURE top bar now includes an accessible initials-avatar button on every tab. The shell owns the Profile & Settings sheet, Edit Profile dialog, and top snackbar; Home's Profile action delegates to that same flow. Profile changes update the global avatar directly from TrackureViewModel.userProfile. One shell-level event collector handles profile feedback regardless of the active tab.
+
+SharedActionsIntegrationTest exercises profile edits, adding/editing an activity, logging completion, revising its note, and generating/writing CSV through all five controllers against the same repository. Full debug APK assembly is included in final validation.

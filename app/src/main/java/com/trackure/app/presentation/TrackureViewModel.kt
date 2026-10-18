@@ -1,4 +1,4 @@
-﻿package com.trackure.app.presentation
+package com.trackure.app.presentation
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -13,6 +13,7 @@ import java.time.LocalDate
 
 /** The sole lifecycle owner for all five screens; feature controllers share its scope and data. */
 class TrackureViewModel(repository: TrackureRepository, today: LocalDate, scheduler: LockscreenAlarmScheduler) : ViewModel() {
+    val userProfile = repository.userProfile
     val home = HomeController(repository, today, viewModelScope)
     val tracker = TrackerController(repository, today, viewModelScope)
     val add = AddActivityController(repository, scheduler, viewModelScope)

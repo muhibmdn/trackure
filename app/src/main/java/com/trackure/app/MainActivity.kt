@@ -2,6 +2,12 @@ package com.trackure.app
 
 import android.os.Bundle
 import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import com.trackure.app.presentation.profile.ProfileSheet
+import com.trackure.app.presentation.profile.EditProfileDialog
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -59,22 +65,67 @@ fun TrackureMainAppShell() {
             }
         }
     )
+    val profile by viewModel.userProfile.collectAsStateWithLifecycle()
+    val savingProfile by viewModel.home.isSaving.collectAsStateWithLifecycle()
+    var showProfileSheet by rememberSaveable { mutableStateOf(false) }
+    var showEditProfile by rememberSaveable { mutableStateOf(false) }
+    val snackbar = remember { SnackbarHostState() }
+    LaunchedEffect(viewModel) {
+        viewModel.home.events.collect { snackbar.showSnackbar(it) }
+    }
     val screenState = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
     Scaffold(
         containerColor = BackgroundCanvas,
         topBar = {
-            TopAppBar(title = { Text("TRACKURE", fontWeight = FontWeight.ExtraBold, fontSize = 20.sp, color = TextPrimary) }, colors = TopAppBarDefaults.topAppBarColors(containerColor = BackgroundCanvas))
+            TopAppBar(
+                title = { Text("TRACKURE", fontWeight = FontWeight.ExtraBold, fontSize = 20.sp, color = TextPrimary) },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = BackgroundCanvas),
+                actions = {
+                    IconButton(
+                        onClick = { showProfileSheet = true },
+                        modifier = Modifier.padding(end = 8.dp).semantics { contentDescription = "Open Profile & Settings" },
+                    ) {
+                        Box(Modifier.size(36.dp).clip(CircleShape).background(SurfaceCard).border(1.dp, SurfaceBorder, CircleShape), contentAlignment = Alignment.Center) {
+                            Text(profile.name.split(" ").filter { it.isNotBlank() }.take(2).joinToString("") { it.take(1).uppercase() },
+                                color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        }
+                    }
+                },
+            )
         },
         bottomBar = { TrackureBottomBar(currentTab) { currentTab = it } },
     ) { padding ->
-        screenState.SaveableStateProvider(currentTab.name) {
-            when (currentTab) {
-                TrackureTab.HOME -> com.trackure.app.presentation.home.HomeRoute(viewModel, Modifier.padding(padding))
-                TrackureTab.TRACKER -> com.trackure.app.presentation.tracker.TrackerRoute(viewModel, Modifier.padding(padding))
-                TrackureTab.ADD -> com.trackure.app.presentation.add.AddActivityScreen(viewModel, Modifier.padding(padding))
-                TrackureTab.HISTORY -> com.trackure.app.presentation.history.HistoryRoute(viewModel, Modifier.padding(padding))
-                TrackureTab.NOTE -> com.trackure.app.presentation.notes.NoteScreen(viewModel, Modifier.padding(padding))
+        Box(Modifier.fillMaxSize()) {
+            screenState.SaveableStateProvider(currentTab.name) {
+                when (currentTab) {
+                    TrackureTab.HOME -> com.trackure.app.presentation.home.HomeRoute(viewModel, { showProfileSheet = true }, Modifier.padding(padding))
+                    TrackureTab.TRACKER -> com.trackure.app.presentation.tracker.TrackerRoute(viewModel, Modifier.padding(padding))
+                    TrackureTab.ADD -> com.trackure.app.presentation.add.AddActivityScreen(viewModel, Modifier.padding(padding))
+                    TrackureTab.HISTORY -> com.trackure.app.presentation.history.HistoryRoute(viewModel, Modifier.padding(padding))
+                    TrackureTab.NOTE -> com.trackure.app.presentation.notes.NoteScreen(viewModel, Modifier.padding(padding))
+                }
             }
+            SnackbarHost(snackbar, Modifier.align(Alignment.TopCenter).padding(padding).padding(12.dp)) { data ->
+                Snackbar(data, containerColor = SurfaceCard, contentColor = TextPrimary)
+            }
+        }
+    }
+    if (showProfileSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showProfileSheet = false },
+            containerColor = SurfaceCard,
+            modifier = Modifier.border(1.dp, SurfaceBorder, RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)),
+        ) {
+            ProfileSheet(profile,
+                onEdit = { showProfileSheet = false; showEditProfile = true },
+                onSwitchAccount = { showProfileSheet = false; viewModel.home.switchAccount() },
+                onLogout = { showProfileSheet = false; viewModel.home.logout() },
+            )
+        }
+    }
+    if (showEditProfile) {
+        EditProfileDialog(profile, savingProfile, { showEditProfile = false }) { name, link, motto ->
+            viewModel.home.updateProfile(name, link, motto) { showEditProfile = false }
         }
     }
 }
