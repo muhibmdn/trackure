@@ -78,6 +78,16 @@ fun TrackureMainAppShell() {
             }
         }
     )
+    val historyViewModel: com.trackure.app.presentation.history.HistoryViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
+        factory = androidx.lifecycle.viewmodel.viewModelFactory {
+            initializer {
+                com.trackure.app.presentation.history.HistoryViewModel(
+                    com.trackure.app.data.repository.InMemoryTrackureRepository.shared,
+                    com.trackure.app.data.repository.InMemoryTrackureRepository.demoDate,
+                )
+            }
+        }
+    )
     Scaffold(
         containerColor = BackgroundCanvas,
         topBar = {
@@ -91,6 +101,8 @@ fun TrackureMainAppShell() {
             com.trackure.app.presentation.tracker.TrackerRoute(trackerViewModel, Modifier.padding(padding))
         } else if (currentTab == TrackureTab.ADD) {
             com.trackure.app.presentation.add.AddActivityScreen(addViewModel, Modifier.padding(padding))
+        } else if (currentTab == TrackureTab.HISTORY) {
+            com.trackure.app.presentation.history.HistoryRoute(historyViewModel, Modifier.padding(padding))
         } else {
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                 Text("${currentTab.label} - coming next", color = TextSecondary)
