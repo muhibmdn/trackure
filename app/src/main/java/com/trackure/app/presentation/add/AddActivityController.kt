@@ -40,9 +40,17 @@ internal fun recurrenceSummary(item: ActivityItem): String {
         RecurrenceFreq.CUSTOM -> "Custom"
     }
     val days = item.repeatDaysOfWeek.sorted().mapNotNull { listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun").getOrNull(it - 1) }
-    val interval = if (item.intervalCount > 1) " · every ${item.intervalCount} weeks" else ""
+    val interval = if (item.intervalCount > 1) " · every ${item.intervalCount} ${recurrenceIntervalUnit(item)}s" else ""
     val dayText = if (item.frequency in listOf(RecurrenceFreq.DAILY, RecurrenceFreq.WEEKLY, RecurrenceFreq.CUSTOM) && days.isNotEmpty()) " · ${days.joinToString(", ")}" else ""
     return base + interval + dayText
+}
+
+internal fun recurrenceIntervalUnit(item: ActivityItem): String = when (item.frequency) {
+    RecurrenceFreq.DAILY -> "day"
+    RecurrenceFreq.WEEKLY -> "week"
+    RecurrenceFreq.MONTHLY -> "month"
+    RecurrenceFreq.YEARLY, RecurrenceFreq.SPECIFIC_DATE -> "year"
+    RecurrenceFreq.CUSTOM -> if (item.repeatDaysOfWeek.isEmpty()) "day" else "week"
 }
 
 sealed interface AddActivityEvent {

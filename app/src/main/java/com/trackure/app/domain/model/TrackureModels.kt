@@ -41,6 +41,7 @@ data class ActivityItem(
     val endOccurrences: Int? = null,
     val specificDate: String? = null, // Independent of recurrence endDate.
     val repeatOnSpecificDate: Boolean = false,
+    val startDateIso: String = java.time.LocalDate.now().toString(),
     val syncStatus: SyncStatus = SyncStatus.PENDING_UPLOAD,
     val updatedAt: String = Instant.now().toString(),
 )

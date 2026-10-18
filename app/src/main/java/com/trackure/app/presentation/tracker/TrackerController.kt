@@ -19,7 +19,7 @@ data class TrackerUiState(val selectedDate: LocalDate, val rows: List<TrackerRow
 
 internal fun trackerState(date: LocalDate, activities: List<ActivityItem>, logs: List<ActivityLog>): TrackerUiState {
     val dayLogs = logs.filter { it.dateIso == date.toString() && it.syncStatus != SyncStatus.PENDING_DELETE }.associateBy { it.activityId }
-    return TrackerUiState(date, activities.filter { it.syncStatus != SyncStatus.PENDING_DELETE }
+    return TrackerUiState(date, activities.filter { com.trackure.app.core.util.ScheduleEvaluator().isActivityScheduledForDate(it, date) }
         .sortedBy { it.scheduledTime }.map { TrackerRow(it, dayLogs[it.id]) })
 }
 

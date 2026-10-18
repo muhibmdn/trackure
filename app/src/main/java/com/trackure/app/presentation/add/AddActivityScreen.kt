@@ -229,8 +229,8 @@ private fun ActivityEditor(mode: ActivityEditorMode, existingCategories: List<St
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Label("INTERVAL")
                         val intervals = ((1..4).toList() + item.intervalCount).distinct().sorted()
-                        Selector(intervalLabel(item.intervalCount), intervals.map(::intervalLabel), !busy) { label ->
-                            item = item.copy(intervalCount = intervals.first { intervalLabel(it) == label })
+                        Selector(intervalLabel(item.intervalCount, item), intervals.map { intervalLabel(it, item) }, !busy) { label ->
+                            item = item.copy(intervalCount = intervals.first { intervalLabel(it, item) == label })
                         }
                     }
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -266,7 +266,8 @@ private fun frequencyLabel(frequency: RecurrenceFreq) = when (frequency) {
     RecurrenceFreq.SPECIFIC_DATE -> "Specific Date"
     else -> frequency.name.lowercase().replaceFirstChar { it.uppercase() }
 }
-private fun intervalLabel(count: Int) = "Every $count " + if (count == 1) "Week" else "Weeks"
+private fun intervalLabel(count: Int, item: ActivityItem) = "Every $count " +
+    recurrenceIntervalUnit(item).replaceFirstChar { it.uppercase() } + if (count == 1) "" else "s"
 
 @Composable
 private fun orangeCheckbox() = CheckboxDefaults.colors(checkedColor = StravaOrangeHighlight, checkmarkColor = Color.White, uncheckedColor = TextSecondary)

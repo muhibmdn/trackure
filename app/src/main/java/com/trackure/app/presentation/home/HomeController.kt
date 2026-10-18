@@ -24,12 +24,10 @@ data class HomeUiState(
 
 class HomeController(private val repository: TrackureRepository, private val date: LocalDate, private val scope: CoroutineScope) {
     private fun state(profile: UserProfile, activities: List<ActivityItem>, logs: List<ActivityLog>, matrix: List<StreakDay>): HomeUiState {
-        val ids = activities.filter { it.syncStatus != SyncStatus.PENDING_DELETE }.map { it.id }.toSet()
+        val evaluator = com.trackure.app.core.util.ScheduleEvaluator()
+        val ids = activities.filter { evaluator.isActivityScheduledForDate(it, date) }.map { it.id }.toSet()
         val completed = logs.filter { it.dateIso == date.toString() && it.isCompleted && it.activityId in ids && it.syncStatus != SyncStatus.PENDING_DELETE }.map { it.activityId }.distinct().size
-        val levels = matrix.associate { it.dateIso to it.level }
-        var day = if ((levels[date.toString()] ?: 0) > 0) date else date.minusDays(1)
-        var streak = 0
-        while ((levels[day.toString()] ?: 0) > 0) { streak++; day = day.minusDays(1) }
+        val streak = evaluator.calculateStreakMatrix(logs, date).first
         return HomeUiState(profile, matrix, completed, ids.size, date.format(DateTimeFormatter.ofPattern("EEEE, MMM d", Locale.ENGLISH)), streak)
     }
     val uiState = combine(repository.userProfile, repository.activities, repository.activityLogs, repository.streakMatrix, ::state)

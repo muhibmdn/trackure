@@ -53,13 +53,14 @@ class MainActivity : ComponentActivity() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TrackureMainAppShell() {
+    val context = androidx.compose.ui.platform.LocalContext.current.applicationContext
     var currentTab by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(TrackureTab.HOME) }
     val viewModel: com.trackure.app.presentation.TrackureViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
         factory = androidx.lifecycle.viewmodel.viewModelFactory {
             initializer {
                 com.trackure.app.presentation.TrackureViewModel(
-                    com.trackure.app.data.repository.InMemoryTrackureRepository.shared,
-                    com.trackure.app.data.repository.InMemoryTrackureRepository.demoDate,
+                    com.trackure.app.data.repository.RoomTrackureRepository.getInstance(context),
+                    java.time.LocalDate.now(),
                     com.trackure.app.core.util.DeferredLockscreenAlarmScheduler,
                 )
             }
