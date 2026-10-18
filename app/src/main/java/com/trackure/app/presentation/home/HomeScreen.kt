@@ -29,7 +29,8 @@ import com.trackure.app.ui.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HomeRoute(viewModel: HomeViewModel, modifier: Modifier = Modifier) {
+fun HomeRoute(sharedViewModel: com.trackure.app.presentation.TrackureViewModel, modifier: Modifier = Modifier) {
+    val viewModel = sharedViewModel.home
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val saving by viewModel.isSaving.collectAsStateWithLifecycle()
     var showProfileSheet by rememberSaveable { mutableStateOf(false) }

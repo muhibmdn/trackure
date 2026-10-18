@@ -81,12 +81,33 @@ class InMemoryTrackureRepository private constructor(private val today: LocalDat
         val count = logs.value.count { it.dateIso == dateIso && it.isCompleted && it.syncStatus != SyncStatus.PENDING_DELETE }
         matrix.value = matrix.value.map { if (it.dateIso == dateIso) it.copy(level = count.coerceIn(0, 3), updatedAt = saved.updatedAt, syncStatus = SyncStatus.PENDING_UPLOAD) else it }
     }
-    override suspend fun saveOrUpdateNote(dateIso: String, activityTitle: String, noteContent: String) = mutex.withLock {
+    override suspend fun saveOrUpdateNote(dateIso: String, activityTitle: String, noteContent: String, originalLogId: String?) = mutex.withLock {
         LocalDate.parse(dateIso)
-        val item = items.value.single { it.title == activityTitle && it.syncStatus != SyncStatus.PENDING_DELETE }
-        val old = logs.value.find { it.activityId == item.id && it.dateIso == dateIso }
-            ?: ActivityLog(activityId = item.id, activityTitle = item.title, category = item.category, scheduledTime = item.scheduledTime, dateIso = dateIso)
-        logs.value = logs.value.filterNot { it.id == old.id } + old.copy(note = noteContent, updatedAt = Instant.now().toString(), syncStatus = SyncStatus.PENDING_UPLOAD)
+        val original = originalLogId?.let { id ->
+            requireNotNull(logs.value.find { it.id == id && it.syncStatus != SyncStatus.PENDING_DELETE }) { "Original note is no longer available" }
+        }
+        val general = activityTitle == GeneralDailyNote.TITLE
+        val unchangedActivity = original != null && original.activityTitle == activityTitle
+        val item = if (general) null else if (unchangedActivity) items.value.find { it.id == original.activityId }
+            else items.value.filter { it.title == activityTitle && it.syncStatus != SyncStatus.PENDING_DELETE }.let { matches ->
+                require(matches.size == 1) { "Activity name must match one activity; rename duplicate activities first" }
+                matches.single()
+            }
+        val activityId = if (general) GeneralDailyNote.ACTIVITY_ID else item?.id ?: requireNotNull(original).activityId
+        val target = logs.value.find { it.activityId == activityId && it.dateIso == dateIso && it.syncStatus != SyncStatus.PENDING_DELETE }
+        if (original != null && target?.id != original.id) {
+            require(target?.note.isNullOrBlank()) { "The selected activity and date already have a note. Edit that note instead." }
+        }
+        val timestamp = Instant.now().toString()
+        val saved = (target ?: ActivityLog(activityId = activityId, activityTitle = item?.title ?: activityTitle,
+            category = item?.category, scheduledTime = item?.scheduledTime.orEmpty(), dateIso = dateIso))
+            .copy(note = noteContent, updatedAt = timestamp, syncStatus = SyncStatus.PENDING_UPLOAD)
+        // Preserve original completion/time when a note changes its activity or date.
+        logs.value = logs.value.filterNot { it.id == saved.id }.map { log ->
+            if (original != null && log.id == original.id && original.id != saved.id)
+                log.copy(note = null, updatedAt = timestamp, syncStatus = SyncStatus.PENDING_UPLOAD)
+            else log
+        } + saved
     }
     override suspend fun importIcsContent(rawIcsText: String): Result<Int> = Result.failure(UnsupportedOperationException("ICS import is reserved for the Biweekly adapter"))
     override suspend fun exportIcsContent(): Result<String> = Result.failure(UnsupportedOperationException("ICS export is reserved for the Biweekly adapter"))
@@ -98,7 +119,7 @@ class InMemoryTrackureRepository private constructor(private val today: LocalDat
             if (config.includeCompletedTime) add("Completed time")
             if (config.includeNote) add("Note")
         }
-        val rows = logs.value.filter { LocalDate.parse(it.dateIso) in today.minusDays(rangeDays.toLong() - 1)..today && it.syncStatus != SyncStatus.PENDING_DELETE }.map { log ->
+        val rows = logs.value.filter { it.activityId != GeneralDailyNote.ACTIVITY_ID && LocalDate.parse(it.dateIso) in today.minusDays(rangeDays.toLong() - 1)..today && it.syncStatus != SyncStatus.PENDING_DELETE }.map { log ->
             buildList {
                 add(log.dateIso); add(log.isCompleted.toString())
                 if (config.includeActivityName) add(log.activityTitle)

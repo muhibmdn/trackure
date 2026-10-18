@@ -1,7 +1,6 @@
 package com.trackure.app.presentation.home
 
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.CoroutineScope
 import com.trackure.app.domain.model.*
 import com.trackure.app.domain.repository.TrackureRepository
 import java.time.LocalDate
@@ -23,7 +22,7 @@ data class HomeUiState(
     val completionPercent: Int get() = if (totalCount == 0) 0 else completedCount * 100 / totalCount
 }
 
-class HomeViewModel(private val repository: TrackureRepository, private val date: LocalDate) : ViewModel() {
+class HomeController(private val repository: TrackureRepository, private val date: LocalDate, private val scope: CoroutineScope) {
     private fun state(profile: UserProfile, activities: List<ActivityItem>, logs: List<ActivityLog>, matrix: List<StreakDay>): HomeUiState {
         val ids = activities.filter { it.syncStatus != SyncStatus.PENDING_DELETE }.map { it.id }.toSet()
         val completed = logs.filter { it.dateIso == date.toString() && it.isCompleted && it.activityId in ids && it.syncStatus != SyncStatus.PENDING_DELETE }.map { it.activityId }.distinct().size
@@ -34,7 +33,7 @@ class HomeViewModel(private val repository: TrackureRepository, private val date
         return HomeUiState(profile, matrix, completed, ids.size, date.format(DateTimeFormatter.ofPattern("EEEE, MMM d", Locale.ENGLISH)), streak)
     }
     val uiState = combine(repository.userProfile, repository.activities, repository.activityLogs, repository.streakMatrix, ::state)
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), state(repository.userProfile.value, repository.activities.value, repository.activityLogs.value, repository.streakMatrix.value))
+        .stateIn(scope, SharingStarted.WhileSubscribed(5_000), state(repository.userProfile.value, repository.activities.value, repository.activityLogs.value, repository.streakMatrix.value))
     private val messages = Channel<String>(Channel.BUFFERED)
     val events = messages.receiveAsFlow()
     private val saving = MutableStateFlow(false)
@@ -42,7 +41,7 @@ class HomeViewModel(private val repository: TrackureRepository, private val date
     fun updateProfile(name: String, link: String, motto: String, onSaved: () -> Unit) {
         if (saving.value) return
         saving.value = true
-        viewModelScope.launch {
+        scope.launch {
             try {
                 repository.updateProfile(name, link, motto)
                 onSaved()
@@ -53,7 +52,7 @@ class HomeViewModel(private val repository: TrackureRepository, private val date
         }
     }
     private fun accountAction(action: suspend () -> Unit) {
-        viewModelScope.launch {
+        scope.launch {
             try { action() } catch (e: CancellationException) { throw e
             } catch (e: Exception) { messages.send(e.message ?: "Account action failed") }
         }

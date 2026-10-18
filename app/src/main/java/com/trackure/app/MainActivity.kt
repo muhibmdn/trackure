@@ -48,46 +48,18 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun TrackureMainAppShell() {
     var currentTab by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(TrackureTab.HOME) }
-    val homeViewModel: com.trackure.app.presentation.home.HomeViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
+    val viewModel: com.trackure.app.presentation.TrackureViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
         factory = androidx.lifecycle.viewmodel.viewModelFactory {
             initializer {
-                com.trackure.app.presentation.home.HomeViewModel(
+                com.trackure.app.presentation.TrackureViewModel(
                     com.trackure.app.data.repository.InMemoryTrackureRepository.shared,
                     com.trackure.app.data.repository.InMemoryTrackureRepository.demoDate,
-                )
-            }
-        }
-    )
-    val trackerViewModel: com.trackure.app.presentation.tracker.TrackerViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
-        factory = androidx.lifecycle.viewmodel.viewModelFactory {
-            initializer {
-                com.trackure.app.presentation.tracker.TrackerViewModel(
-                    com.trackure.app.data.repository.InMemoryTrackureRepository.shared,
-                    com.trackure.app.data.repository.InMemoryTrackureRepository.demoDate,
-                )
-            }
-        }
-    )
-    val addViewModel: com.trackure.app.presentation.add.AddActivityViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
-        factory = androidx.lifecycle.viewmodel.viewModelFactory {
-            initializer {
-                com.trackure.app.presentation.add.AddActivityViewModel(
-                    com.trackure.app.data.repository.InMemoryTrackureRepository.shared,
                     com.trackure.app.core.util.DeferredLockscreenAlarmScheduler,
                 )
             }
         }
     )
-    val historyViewModel: com.trackure.app.presentation.history.HistoryViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
-        factory = androidx.lifecycle.viewmodel.viewModelFactory {
-            initializer {
-                com.trackure.app.presentation.history.HistoryViewModel(
-                    com.trackure.app.data.repository.InMemoryTrackureRepository.shared,
-                    com.trackure.app.data.repository.InMemoryTrackureRepository.demoDate,
-                )
-            }
-        }
-    )
+    val screenState = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
     Scaffold(
         containerColor = BackgroundCanvas,
         topBar = {
@@ -95,17 +67,13 @@ fun TrackureMainAppShell() {
         },
         bottomBar = { TrackureBottomBar(currentTab) { currentTab = it } },
     ) { padding ->
-        if (currentTab == TrackureTab.HOME) {
-            com.trackure.app.presentation.home.HomeRoute(homeViewModel, Modifier.padding(padding))
-        } else if (currentTab == TrackureTab.TRACKER) {
-            com.trackure.app.presentation.tracker.TrackerRoute(trackerViewModel, Modifier.padding(padding))
-        } else if (currentTab == TrackureTab.ADD) {
-            com.trackure.app.presentation.add.AddActivityScreen(addViewModel, Modifier.padding(padding))
-        } else if (currentTab == TrackureTab.HISTORY) {
-            com.trackure.app.presentation.history.HistoryRoute(historyViewModel, Modifier.padding(padding))
-        } else {
-            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                Text("${currentTab.label} - coming next", color = TextSecondary)
+        screenState.SaveableStateProvider(currentTab.name) {
+            when (currentTab) {
+                TrackureTab.HOME -> com.trackure.app.presentation.home.HomeRoute(viewModel, Modifier.padding(padding))
+                TrackureTab.TRACKER -> com.trackure.app.presentation.tracker.TrackerRoute(viewModel, Modifier.padding(padding))
+                TrackureTab.ADD -> com.trackure.app.presentation.add.AddActivityScreen(viewModel, Modifier.padding(padding))
+                TrackureTab.HISTORY -> com.trackure.app.presentation.history.HistoryRoute(viewModel, Modifier.padding(padding))
+                TrackureTab.NOTE -> com.trackure.app.presentation.notes.NoteScreen(viewModel, Modifier.padding(padding))
             }
         }
     }

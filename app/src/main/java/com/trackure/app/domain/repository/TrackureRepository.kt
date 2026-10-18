@@ -16,8 +16,11 @@ interface TrackureRepository {
     suspend fun logout()
     suspend fun saveActivity(item: ActivityItem)
     suspend fun logActivityCompletion(activityId: String, dateIso: String, hour: String, minute: String, note: String)
-    /** Titles must resolve uniquely; ambiguous titles fail instead of updating another activity. */
-    suspend fun saveOrUpdateNote(dateIso: String, activityTitle: String, noteContent: String)
+    /** Titles must resolve uniquely; GeneralDailyNote.TITLE creates an unscheduled journal entry.
+     * originalLogId allows an edit to move its note atomically without moving completion metadata.
+     * Moving onto a different nonempty note must fail rather than overwrite that note.
+     */
+    suspend fun saveOrUpdateNote(dateIso: String, activityTitle: String, noteContent: String, originalLogId: String? = null)
     suspend fun importIcsContent(rawIcsText: String): Result<Int>
     suspend fun exportIcsContent(): Result<String>
     /** CSV, including a header; rangeDays includes the reference day. */

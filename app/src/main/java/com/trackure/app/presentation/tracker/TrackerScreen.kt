@@ -1,4 +1,4 @@
-﻿package com.trackure.app.presentation.tracker
+package com.trackure.app.presentation.tracker
 
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
@@ -36,7 +36,8 @@ import java.time.temporal.TemporalAdjusters
 import java.util.Locale
 
 @Composable
-fun TrackerRoute(viewModel: TrackerViewModel, modifier: Modifier = Modifier) {
+fun TrackerRoute(sharedViewModel: com.trackure.app.presentation.TrackureViewModel, modifier: Modifier = Modifier) {
+    val viewModel = sharedViewModel.tracker
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val draft by viewModel.draft.collectAsStateWithLifecycle()
     TrackerScreen(state, viewModel::selectDate, viewModel::selectToday, viewModel::openActivity, modifier)

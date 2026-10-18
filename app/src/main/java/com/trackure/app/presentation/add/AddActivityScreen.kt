@@ -40,7 +40,8 @@ private val SmallShape = RoundedCornerShape(6.dp)
 private val ItemSaver = Saver<ActivityItem, String>(save = { Json.encodeToString(it) }, restore = { Json.decodeFromString<ActivityItem>(it) })
 
 @Composable
-fun AddActivityScreen(viewModel: AddActivityViewModel, modifier: Modifier = Modifier) {
+fun AddActivityScreen(sharedViewModel: com.trackure.app.presentation.TrackureViewModel, modifier: Modifier = Modifier) {
+    val viewModel = sharedViewModel.add
     var editorMode by remember { mutableStateOf<ActivityEditorMode?>(null) }
     val allActivities by viewModel.activities.collectAsStateWithLifecycle()
     val busy by viewModel.busy.collectAsStateWithLifecycle()
@@ -121,7 +122,7 @@ private fun ActivityList(activities: List<ActivityItem>, busy: Boolean, onAdd: (
                     Text(activity.title, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text(activity.scheduledTime, fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = StravaOrangeHighlight)
-                        Text("• ${recurrenceSummary(activity)}", fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = TextSecondary, modifier = Modifier.weight(1f))
+                        Text("â€¢ ${recurrenceSummary(activity)}", fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = TextSecondary, modifier = Modifier.weight(1f))
                     }
                 }
                 SquareButton(Icons.Default.Edit, "Edit ${activity.title}", { onEdit(activity) }, 32, ButtonSurface, !busy)

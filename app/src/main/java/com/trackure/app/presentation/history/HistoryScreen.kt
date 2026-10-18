@@ -40,7 +40,8 @@ private val TrendOrange = Color(0xFFFF571B)
 private val MetricSurface = Color(0xFF1C2025)
 
 @Composable
-fun HistoryRoute(viewModel: HistoryViewModel, modifier: Modifier = Modifier) {
+fun HistoryRoute(sharedViewModel: com.trackure.app.presentation.TrackureViewModel, modifier: Modifier = Modifier) {
+    val viewModel = sharedViewModel.history
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val busy by viewModel.busy.collectAsStateWithLifecycle()
     var showExport by rememberSaveable { mutableStateOf(false) }
@@ -137,7 +138,7 @@ private fun HistoryChart(days: List<HistoryDay>, selected: Int, onSelect: (Int) 
     if (days.isEmpty()) return
     val selectedIndex = selected.coerceIn(days.indices)
     val day = days[selectedIndex]
-    val tooltip = "${day.date.format(DateTimeFormatter.ofPattern("EEE, d MMM", Locale.ENGLISH))} • ${day.completed}/${day.total} Done (${day.percent}%)"
+    val tooltip = "${day.date.format(DateTimeFormatter.ofPattern("EEE, d MMM", Locale.ENGLISH))} â€¢ ${day.completed}/${day.total} Done (${day.percent}%)"
     // A clamped alignment keeps the badge visible near edge bars on narrow devices.
     Box(Modifier.fillMaxWidth().padding(bottom = 8.dp), contentAlignment = BiasAlignment(((selectedIndex + 0.5f) / days.size * 2f - 1f), 0f)) {
         Row(Modifier.background(Color(0xFF31353B), RoundedCornerShape(6.dp)).padding(horizontal = 8.dp, vertical = 6.dp)
@@ -204,7 +205,7 @@ fun ExportHistoryModal(busy: Boolean, error: String?, onDismiss: () -> Unit, onE
             .verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Export History", Modifier.weight(1f), color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                IconButton(onDismiss, enabled = !busy, modifier = Modifier.semantics { contentDescription = "Close export history" }) { Text("✕", color = TextSecondary) }
+                IconButton(onDismiss, enabled = !busy, modifier = Modifier.semantics { contentDescription = "Close export history" }) { Text("âœ•", color = TextSecondary) }
             }
             Text("Pilih data aktivitas yang ingin diekspor.", fontSize = 12.sp, color = TextSecondary)
             ExportOption("Activity Name (Nama Aktivitas)", includeName, !busy) { includeName = it }

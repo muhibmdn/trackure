@@ -1,7 +1,6 @@
-﻿package com.trackure.app.presentation.add
+package com.trackure.app.presentation.add
 
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.CoroutineScope
 import com.trackure.app.core.util.LockscreenAlarmScheduler
 import com.trackure.app.domain.model.*
 import com.trackure.app.domain.repository.TrackureRepository
@@ -52,7 +51,7 @@ sealed interface AddActivityEvent {
     data object ExportReady : AddActivityEvent
 }
 
-class AddActivityViewModel(private val repository: TrackureRepository, private val scheduler: LockscreenAlarmScheduler) : ViewModel() {
+class AddActivityController(private val repository: TrackureRepository, private val scheduler: LockscreenAlarmScheduler, private val scope: CoroutineScope) {
     val activities = repository.activities
     private val working = MutableStateFlow(false)
     val busy = working.asStateFlow()
@@ -62,7 +61,7 @@ class AddActivityViewModel(private val repository: TrackureRepository, private v
     private fun work(block: suspend () -> Unit) {
         if (working.value) return
         working.value = true
-        viewModelScope.launch {
+        scope.launch {
             try { block() }
             catch (e: CancellationException) { throw e }
             catch (e: Exception) { channel.send(AddActivityEvent.Message(e.message ?: "Operation failed. Please try again.")) }

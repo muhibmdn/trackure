@@ -1,7 +1,6 @@
-﻿package com.trackure.app.presentation.history
+package com.trackure.app.presentation.history
 
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.CoroutineScope
 import com.trackure.app.domain.model.ActivityLog
 import com.trackure.app.domain.model.ExportHistoryConfig
 import com.trackure.app.domain.model.SyncStatus
@@ -31,7 +30,7 @@ data class HistoryUiState(val range: HistoryRange, val averageCompletion: Int, v
  * Days without occurrence logs are excluded from the average; rolling counts use zero for them.
  */
 internal fun historyState(logs: List<ActivityLog>, today: LocalDate, range: HistoryRange): HistoryUiState {
-    val unique = logs.filter { it.syncStatus != SyncStatus.PENDING_DELETE && runCatching { LocalDate.parse(it.dateIso) }.isSuccess }
+    val unique = logs.filter { it.activityId != com.trackure.app.domain.model.GeneralDailyNote.ACTIVITY_ID && it.syncStatus != SyncStatus.PENDING_DELETE && runCatching { LocalDate.parse(it.dateIso) }.isSuccess }
         .groupBy { it.activityId to it.dateIso }.values.map { versions -> versions.maxBy { it.updatedAt } }
         .filter { LocalDate.parse(it.dateIso) <= today }
     val byDay = unique.groupBy { LocalDate.parse(it.dateIso) }
@@ -54,10 +53,10 @@ sealed interface HistoryEvent {
     data class Error(val message: String) : HistoryEvent
 }
 
-class HistoryViewModel(private val repository: TrackureRepository, today: LocalDate) : ViewModel() {
+class HistoryController(private val repository: TrackureRepository, today: LocalDate, private val scope: CoroutineScope) {
     private val range = MutableStateFlow(HistoryRange.MONTH)
     val uiState = combine(repository.activityLogs, range) { logs, selected -> historyState(logs, today, selected) }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), historyState(repository.activityLogs.value, today, range.value))
+        .stateIn(scope, SharingStarted.WhileSubscribed(5_000), historyState(repository.activityLogs.value, today, range.value))
     private val working = MutableStateFlow(false)
     val busy = working.asStateFlow()
     private val eventsChannel = Channel<HistoryEvent>(Channel.BUFFERED)
@@ -69,7 +68,7 @@ class HistoryViewModel(private val repository: TrackureRepository, today: LocalD
         if (working.value) return
         working.value = true
         val selectedRangeDays = range.value.days
-        viewModelScope.launch {
+        scope.launch {
             try {
                 pendingCsv = repository.exportHistoryData(config, selectedRangeDays).getOrThrow()
                 eventsChannel.send(HistoryEvent.ExportReady)
@@ -80,7 +79,7 @@ class HistoryViewModel(private val repository: TrackureRepository, today: LocalD
     fun writeExport(write: suspend (String) -> Unit) {
         val content = pendingCsv ?: return
         pendingCsv = null // Consume once, including duplicate picker callbacks.
-        viewModelScope.launch {
+        scope.launch {
             try {
                 withContext(Dispatchers.IO) { write(content) }
                 eventsChannel.send(HistoryEvent.Exported)
