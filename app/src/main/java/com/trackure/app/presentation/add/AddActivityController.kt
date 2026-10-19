@@ -66,6 +66,7 @@ class AddActivityController(private val repository: TrackureRepository, private 
     private val channel = Channel<AddActivityEvent>(Channel.BUFFERED)
     val events = channel.receiveAsFlow()
     private var exportContent: String? = null
+    private var awaitingExportDestination = false
     private fun work(block: suspend () -> Unit) {
         if (working.value) return
         working.value = true
@@ -73,7 +74,7 @@ class AddActivityController(private val repository: TrackureRepository, private 
             try { block() }
             catch (e: CancellationException) { throw e }
             catch (e: Exception) { channel.send(AddActivityEvent.Message(e.message ?: "Operation failed. Please try again.")) }
-            finally { working.value = false }
+            finally { working.value = awaitingExportDestination }
         }
     }
     fun save(item: ActivityItem) = work {
@@ -93,18 +94,23 @@ class AddActivityController(private val repository: TrackureRepository, private 
     }
     fun importIcs(read: suspend () -> String) = work {
         val content = withContext(Dispatchers.IO) { read() }
-        val count = repository.importIcsContent(content).getOrThrow()
-        channel.send(AddActivityEvent.Message("Schedule .ics imported successfully ($count items)"))
+        val count = withContext(Dispatchers.IO) { repository.importIcsContent(content).getOrThrow() }
+        channel.send(AddActivityEvent.Message("Imported $count activities from .ics"))
     }
     fun prepareExport() = work {
-        exportContent = repository.exportIcsContent().getOrThrow()
+        exportContent = withContext(Dispatchers.IO) { repository.exportIcsContent().getOrThrow() }
+        awaitingExportDestination = true
         channel.send(AddActivityEvent.ExportReady)
     }
-    fun cancelExport() { exportContent = null }
-    fun writeExport(write: suspend (String) -> Unit) = work {
-        val content = exportContent ?: error("Export expired. Please export again.")
-        withContext(Dispatchers.IO) { write(content) }
+    fun cancelExport() { exportContent = null; awaitingExportDestination = false; working.value = false }
+    fun writeExport(write: suspend (String) -> Unit) {
+        val content = exportContent ?: return
         exportContent = null
-        channel.send(AddActivityEvent.Message("Schedule .ics exported successfully"))
+        awaitingExportDestination = false
+        working.value = false
+        work {
+            withContext(Dispatchers.IO) { write(content) }
+            channel.send(AddActivityEvent.Message("Exported schedule to trackure_schedule.ics"))
+        }
     }
 }

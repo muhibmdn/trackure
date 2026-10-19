@@ -59,7 +59,7 @@ fun HistoryRoute(sharedViewModel: com.trackure.app.presentation.TrackureViewMode
         viewModel.events.collect { event ->
             when (event) {
                 HistoryEvent.ExportReady -> {
-                    try { saveFile.launch("trackure-history.csv") }
+                    try { saveFile.launch("Trackure_History_Export.csv") }
                     catch (e: Exception) { viewModel.cancelExport(); error = e.message ?: "No file saver available" }
                 }
                 HistoryEvent.Exported -> {
@@ -214,7 +214,7 @@ fun ExportHistoryModal(busy: Boolean, error: String?, onDismiss: () -> Unit, onE
             error?.let { Text(it, color = StravaOrangeHighlight, fontSize = 12.sp, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }) }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onDismiss, Modifier.weight(1f), enabled = !busy, shape = RoundedCornerShape(8.dp), colors = ButtonDefaults.buttonColors(containerColor = SurfaceBorder, contentColor = TextPrimary)) { Text("Cancel", fontSize = 12.sp) }
-                Button({ onExport(ExportHistoryConfig(includeName, includeTime, includeNote)) }, Modifier.weight(1.3f), enabled = !busy, shape = RoundedCornerShape(8.dp), colors = ButtonDefaults.buttonColors(containerColor = StravaOrangeHighlight, contentColor = Color.White)) { Text(if (busy) "Exporting..." else "Export Data", fontWeight = FontWeight.Bold, fontSize = 12.sp) }
+                Button({ onExport(ExportHistoryConfig(includeName, includeTime, includeNote)) }, Modifier.weight(1.3f), enabled = !busy && (includeName || includeTime || includeNote), shape = RoundedCornerShape(8.dp), colors = ButtonDefaults.buttonColors(containerColor = StravaOrangeHighlight, contentColor = Color.White)) { Text(if (busy) "Exporting..." else "Export Data", fontWeight = FontWeight.Bold, fontSize = 12.sp) }
             }
         }
     }

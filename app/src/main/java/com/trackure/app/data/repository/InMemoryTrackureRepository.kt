@@ -1,6 +1,8 @@
 package com.trackure.app.data.repository
 
 import com.trackure.app.domain.model.*
+import com.trackure.app.core.util.IcsCalendarHelper
+import com.trackure.app.core.util.HistoryExportHelper
 import com.trackure.app.domain.repository.TrackureRepository
 import java.time.Instant
 import java.time.LocalDate
@@ -109,24 +111,18 @@ class InMemoryTrackureRepository private constructor(private val today: LocalDat
             else log
         } + saved
     }
-    override suspend fun importIcsContent(rawIcsText: String): Result<Int> = Result.failure(UnsupportedOperationException("ICS import is reserved for the Biweekly adapter"))
-    override suspend fun exportIcsContent(): Result<String> = Result.failure(UnsupportedOperationException("ICS export is reserved for the Biweekly adapter"))
+    override suspend fun importIcsContent(rawIcsText: String): Result<Int> = mutex.withLock {
+        runCatching {
+            val imported = IcsCalendarHelper().parseIcsToActivities(rawIcsText)
+            val ids = imported.map { it.id }.toSet()
+            items.value = items.value.filterNot { it.id in ids } + imported
+            imported.size
+        }
+    }
+    override suspend fun exportIcsContent(): Result<String> = runCatching {
+        IcsCalendarHelper().generateIcsFromActivities(items.value)
+    }
     override suspend fun exportHistoryData(config: ExportHistoryConfig, rangeDays: Int): Result<String> = runCatching {
-        require(rangeDays > 0)
-        val header = buildList {
-            add("Date"); add("Completed")
-            if (config.includeActivityName) add("Activity")
-            if (config.includeCompletedTime) add("Completed time")
-            if (config.includeNote) add("Note")
-        }
-        val rows = logs.value.filter { it.activityId != GeneralDailyNote.ACTIVITY_ID && LocalDate.parse(it.dateIso) in today.minusDays(rangeDays.toLong() - 1)..today && it.syncStatus != SyncStatus.PENDING_DELETE }.map { log ->
-            buildList {
-                add(log.dateIso); add(log.isCompleted.toString())
-                if (config.includeActivityName) add(log.activityTitle)
-                if (config.includeCompletedTime) add(if (log.isCompleted) "${log.completedHour.orEmpty()}:${log.completedMinute.orEmpty()}" else "")
-                if (config.includeNote) add(log.note.orEmpty())
-            }
-        }
-        (listOf(header) + rows).joinToString("\r\n") { row -> row.joinToString(",") { "\"${it.replace("\"", "\"\"")}\"" } }
+        HistoryExportHelper(today).buildHistoryExportContent(logs.value, config, rangeDays)
     }
 }

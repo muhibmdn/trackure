@@ -3,7 +3,7 @@ package com.trackure.app.data.repository
 import android.content.Context
 import androidx.room.withTransaction
 import com.trackure.app.core.database.*
-import com.trackure.app.core.util.ScheduleEvaluator
+import com.trackure.app.core.util.*
 import com.trackure.app.domain.model.*
 import com.trackure.app.domain.repository.TrackureRepository
 import java.time.Instant
@@ -17,12 +17,13 @@ class RoomTrackureRepository(
     private val database: TrackureDatabase,
     scope: CoroutineScope,
     private val dateProvider: () -> LocalDate = { LocalDate.now() },
+    private val alarmScheduler: LockscreenAlarmScheduler = DeferredLockscreenAlarmScheduler,
 ) : TrackureRepository {
     companion object {
         @Volatile private var instance: RoomTrackureRepository? = null
         fun getInstance(context: Context): RoomTrackureRepository = instance ?: synchronized(this) {
             instance ?: RoomTrackureRepository(TrackureDatabase.getInstance(context),
-                CoroutineScope(SupervisorJob() + Dispatchers.IO)).also { instance = it }
+                CoroutineScope(SupervisorJob() + Dispatchers.IO), alarmScheduler = AndroidLockscreenAlarmScheduler(context)).also { instance = it }
         }
         private val defaultProfile = UserProfile(id = "local_user", name = "Muhib Mdn",
             profileUrlOrEmail = "https://github.com/muhibmdn", motto = "One Sure Step Everyday")
@@ -100,27 +101,32 @@ class RoomTrackureRepository(
         dao.upsertActivityLog(saved.toEntity())
     }
 
-    override suspend fun importIcsContent(rawIcsText: String): Result<Int> = Result.failure(UnsupportedOperationException("ICS import is reserved for the Biweekly adapter"))
-    override suspend fun exportIcsContent(): Result<String> = Result.failure(UnsupportedOperationException("ICS export is reserved for the Biweekly adapter"))
-    override suspend fun exportHistoryData(config: ExportHistoryConfig, rangeDays: Int): Result<String> = try {
-        require(rangeDays > 0)
-        val today = dateProvider()
-        val header = buildList {
-            add("Date"); add("Completed")
-            if (config.includeActivityName) add("Activity")
-            if (config.includeCompletedTime) add("Completed time")
-            if (config.includeNote) add("Note")
-        }
-        val rows = dao.getAllLogsOnce().filter { it.activityId != GeneralDailyNote.ACTIVITY_ID &&
-            LocalDate.parse(it.dateIso) in today.minusDays(rangeDays.toLong() - 1)..today }.map { log ->
-            buildList {
-                add(log.dateIso); add(log.isCompleted.toString())
-                if (config.includeActivityName) add(log.activityTitle)
-                if (config.includeCompletedTime) add(if (log.isCompleted) "${log.completedHour.orEmpty()}:${log.completedMinute.orEmpty()}" else "")
-                if (config.includeNote) add(log.note.orEmpty())
+    override suspend fun importIcsContent(rawIcsText: String): Result<Int> = withContext(Dispatchers.IO) {
+        try {
+            val imported = IcsCalendarHelper().parseIcsToActivities(rawIcsText)
+            database.withTransaction { dao.upsertActivities(imported.map { it.toEntity() }) }
+            // Persist the complete import before scheduling. Stable UID-based IDs make retries idempotent.
+            var failed = 0
+            imported.forEach { item ->
+                try { alarmScheduler.scheduleFullScreenTrigger(item) }
+                catch (e: CancellationException) { throw e }
+                catch (_: Exception) { failed++ }
             }
-        }
-        Result.success((listOf(header) + rows).joinToString("\r\n") { row -> row.joinToString(",") { "\"${it.replace("\"", "\"\"")}\"" } })
-    } catch (e: CancellationException) { throw e
-    } catch (e: Exception) { Result.failure(e) }
+            check(failed == 0) { "Imported ${imported.size} activities, but $failed alarms could not be scheduled. Reopen Trackure to retry alarms." }
+            Result.success(imported.size)
+        } catch (e: CancellationException) { throw e
+        } catch (e: Exception) { Result.failure(e) }
+    }
+
+    override suspend fun exportIcsContent(): Result<String> = withContext(Dispatchers.IO) {
+        try { Result.success(IcsCalendarHelper().generateIcsFromActivities(dao.getAllActivitiesOnce().map { it.toDomain() })) }
+        catch (e: CancellationException) { throw e }
+        catch (e: Exception) { Result.failure(e) }
+    }
+
+    override suspend fun exportHistoryData(config: ExportHistoryConfig, rangeDays: Int): Result<String> = withContext(Dispatchers.IO) {
+        try { Result.success(HistoryExportHelper(dateProvider()).buildHistoryExportContent(dao.getAllLogsOnce().map { it.toDomain() }, config, rangeDays)) }
+        catch (e: CancellationException) { throw e }
+        catch (e: Exception) { Result.failure(e) }
+    }
 }

@@ -48,7 +48,7 @@ fun AddActivityScreen(sharedViewModel: com.trackure.app.presentation.TrackureVie
     val activities = allActivities.filter { it.syncStatus != SyncStatus.PENDING_DELETE }
     val context = LocalContext.current
     val resolver = context.contentResolver
-    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) viewModel.importIcs {
             val bytes = requireNotNull(resolver.openInputStream(uri)) { "Unable to read calendar file" }.use { input ->
                 val output = java.io.ByteArrayOutputStream()
@@ -75,7 +75,11 @@ fun AddActivityScreen(sharedViewModel: com.trackure.app.presentation.TrackureVie
             when (event) {
                 is AddActivityEvent.Saved -> { editorMode = null; Toast.makeText(context, "Saved: ${event.title}", Toast.LENGTH_SHORT).show() }
                 is AddActivityEvent.Message -> Toast.makeText(context, event.text, Toast.LENGTH_LONG).show()
-                AddActivityEvent.ExportReady -> exportLauncher.launch("trackure-schedule.ics")
+                AddActivityEvent.ExportReady -> try { exportLauncher.launch("trackure_schedule.ics") }
+                    catch (_: android.content.ActivityNotFoundException) {
+                        viewModel.cancelExport()
+                        Toast.makeText(context, "No file saver available", Toast.LENGTH_LONG).show()
+                    }
             }
         }
     }
@@ -83,7 +87,12 @@ fun AddActivityScreen(sharedViewModel: com.trackure.app.presentation.TrackureVie
     val mode = editorMode
     if (mode == null) {
         ActivityList(activities, busy, { editorMode = ActivityEditorMode.Add }, { editorMode = ActivityEditorMode.Edit(it) },
-            { importLauncher.launch("text/calendar") }, viewModel::prepareExport, modifier)
+            {
+                try { importLauncher.launch(arrayOf("text/calendar", "*/*")) }
+                catch (_: android.content.ActivityNotFoundException) {
+                    Toast.makeText(context, "No file picker available", Toast.LENGTH_LONG).show()
+                }
+            }, viewModel::prepareExport, modifier)
     } else {
         key(mode) {
             ActivityEditor(mode, activities.mapNotNull { it.category }, busy, { editorMode = null }, viewModel::save, modifier)

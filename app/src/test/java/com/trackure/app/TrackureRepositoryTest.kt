@@ -47,8 +47,7 @@ class TrackureRepositoryTest {
         repo.saveOrUpdateNote("2026-10-22", repo.activities.value.first().title, "A, \"quote\"\nNext")
         val csv = repo.exportHistoryData(ExportHistoryConfig(includeNote = true), 1).getOrThrow()
         assertTrue(csv.contains("\"A, \"\"quote\"\"\nNext\""))
-        val minimal = repo.exportHistoryData(ExportHistoryConfig(false, false, false), 1).getOrThrow()
-        assertEquals("\"Date\",\"Completed\"", minimal.substringBefore("\r\n"))
+        assertTrue(repo.exportHistoryData(ExportHistoryConfig(false, false, false), 1).isFailure)
         assertTrue(repo.exportHistoryData(ExportHistoryConfig(), 0).isFailure)
     }
 }
