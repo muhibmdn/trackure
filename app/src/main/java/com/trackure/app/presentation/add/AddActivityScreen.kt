@@ -141,6 +141,22 @@ private fun ActivityEditor(mode: ActivityEditorMode, existingCategories: List<St
     var showCategoryInput by rememberSaveable { mutableStateOf(false) }
     var newCategory by rememberSaveable { mutableStateOf("") }
     var validationError by remember { mutableStateOf<String?>(null) }
+    val context = LocalContext.current
+    var pendingTest by rememberSaveable { mutableStateOf(false) }
+    val requestAlarmPermissions = rememberAlarmPermissionRequester {
+        val warning = alarmPermissionMessage(context)
+        if (warning != null) Toast.makeText(context, warning, Toast.LENGTH_LONG).show()
+        if (pendingTest && warning == null) {
+            try {
+                com.trackure.app.core.util.AndroidLockscreenAlarmScheduler(context)
+                    .triggerTestLockscreenInSeconds(item.title, item.scheduledTime)
+                Toast.makeText(context, "Lock your phone screen now! Triggering in 5 seconds...", Toast.LENGTH_LONG).show()
+            } catch (_: RuntimeException) {
+                Toast.makeText(context, "Unable to schedule test alarm. Please try again.", Toast.LENGTH_LONG).show()
+            }
+        }
+        pendingTest = false
+    }
     val categories = (listOf("Study / Kuliah", "Running", "Gym / Strength", "Coding / Dev", "Personal") + existingCategories + customCategories + listOfNotNull(item.category)).distinct()
     Column(modifier.fillMaxSize().background(BackgroundCanvas).imePadding()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -185,11 +201,19 @@ private fun ActivityEditor(mode: ActivityEditorMode, existingCategories: List<St
             }
             FlatBox(padding = 12) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(item.fullScreenLockscreenTrigger, { item = item.copy(fullScreenLockscreenTrigger = it) }, enabled = !busy, colors = orangeCheckbox(), modifier = Modifier.semantics { contentDescription = "Full-screen lockscreen trigger" })
+                    Checkbox(item.fullScreenLockscreenTrigger, {
+                        item = item.copy(fullScreenLockscreenTrigger = it)
+                        if (it) { pendingTest = false; requestAlarmPermissions() }
+                    }, enabled = !busy, colors = orangeCheckbox(), modifier = Modifier.semantics { contentDescription = "Full-screen lockscreen trigger" })
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text("Full-Screen Lockscreen Trigger", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
                         Text("Overlay schedule on screen even when phone is locked or screen is off, like Google Calendar alarms.", fontSize = 11.sp, color = TextSecondary)
                     }
+                }
+                OutlinedButton({ pendingTest = true; requestAlarmPermissions() }, enabled = !busy,
+                    border = BorderStroke(1.dp, Color(0xFFFC4C02)),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFFC4C02))) {
+                    Text("Test Lockscreen Trigger (5s)", fontSize = 12.sp)
                 }
             }
             FlatBox {

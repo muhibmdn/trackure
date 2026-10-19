@@ -17,6 +17,10 @@ interface TrackureDao {
     fun observeAllActivities(): Flow<List<ActivityEntity>>
     @Query("SELECT * FROM activities WHERE syncStatus != 'PENDING_DELETE' ORDER BY scheduledTime, id")
     suspend fun getAllActivitiesOnce(): List<ActivityEntity>
+    @Query("SELECT * FROM activities WHERE fullScreenLockscreenTrigger = 1 AND syncStatus != 'PENDING_DELETE'")
+    suspend fun getLockscreenActivitiesOnce(): List<ActivityEntity>
+    @Query("SELECT * FROM activities WHERE id = :id AND syncStatus != 'PENDING_DELETE' LIMIT 1")
+    suspend fun getActivityOnce(id: String): ActivityEntity?
     @Upsert suspend fun upsertActivity(activity: ActivityEntity)
     @Upsert suspend fun upsertActivities(activities: List<ActivityEntity>)
     @Query("UPDATE activities SET syncStatus = 'PENDING_DELETE', updatedAt = CAST(strftime('%s','now') AS INTEGER) * 1000 WHERE id = :id")

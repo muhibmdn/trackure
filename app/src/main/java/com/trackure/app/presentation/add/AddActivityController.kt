@@ -83,7 +83,9 @@ class AddActivityController(private val repository: TrackureRepository, private 
         // Persistence succeeds independently of platform permission or scheduling failures.
         channel.send(AddActivityEvent.Saved(saved.title))
         try {
-            if (saved.fullScreenLockscreenTrigger) scheduler.scheduleFullScreenTrigger(saved) else scheduler.cancelTrigger(saved.id)
+            withContext(Dispatchers.IO) {
+                if (saved.fullScreenLockscreenTrigger) scheduler.scheduleFullScreenTrigger(saved) else scheduler.cancelTrigger(saved.id)
+            }
         } catch (e: Exception) {
             if (e is CancellationException) throw e
             channel.send(AddActivityEvent.Message("Activity saved; alarm could not be scheduled: ${e.message.orEmpty()}"))

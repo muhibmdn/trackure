@@ -42,6 +42,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        com.trackure.app.core.util.enqueueAlarmRecovery(this)
         setContent {
             TrackureTheme {
                 TrackureMainAppShell()
@@ -61,7 +62,7 @@ fun TrackureMainAppShell() {
                 com.trackure.app.presentation.TrackureViewModel(
                     com.trackure.app.data.repository.RoomTrackureRepository.getInstance(context),
                     java.time.LocalDate.now(),
-                    com.trackure.app.core.util.DeferredLockscreenAlarmScheduler,
+                    com.trackure.app.core.util.AndroidLockscreenAlarmScheduler(context),
                 )
             }
         }
