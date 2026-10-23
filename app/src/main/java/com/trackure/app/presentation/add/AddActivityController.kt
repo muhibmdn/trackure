@@ -1,7 +1,6 @@
 package com.trackure.app.presentation.add
 
 import kotlinx.coroutines.CoroutineScope
-import com.trackure.app.core.util.LockscreenAlarmScheduler
 import com.trackure.app.domain.model.*
 import com.trackure.app.domain.repository.TrackureRepository
 import java.time.LocalDate
@@ -59,7 +58,7 @@ sealed interface AddActivityEvent {
     data object ExportReady : AddActivityEvent
 }
 
-class AddActivityController(private val repository: TrackureRepository, private val scheduler: LockscreenAlarmScheduler, private val scope: CoroutineScope) {
+class AddActivityController(private val repository: TrackureRepository, private val scope: CoroutineScope) {
     val activities = repository.activities
     private val working = MutableStateFlow(false)
     val busy = working.asStateFlow()
@@ -83,14 +82,7 @@ class AddActivityController(private val repository: TrackureRepository, private 
         repository.saveActivity(saved)
         // Persistence succeeds independently of platform permission or scheduling failures.
         channel.send(AddActivityEvent.Saved(saved.title))
-        try {
-            withContext(Dispatchers.IO) {
-                if (saved.fullScreenLockscreenTrigger) scheduler.scheduleFullScreenTrigger(saved) else scheduler.cancelTrigger(saved.id)
-            }
-        } catch (e: Exception) {
-            if (e is CancellationException) throw e
-            channel.send(AddActivityEvent.Message("Activity saved; alarm could not be scheduled: ${e.message.orEmpty()}"))
-        }
+
     }
     fun importIcs(read: suspend () -> String) = work {
         val content = withContext(Dispatchers.IO) { read() }

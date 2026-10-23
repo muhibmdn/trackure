@@ -24,7 +24,7 @@ class SharedActionsIntegrationTest {
         try {
             val home = HomeController(repository, today, scope)
             val tracker = TrackerController(repository, today, scope)
-            val add = AddActivityController(repository, DeferredLockscreenAlarmScheduler, scope)
+            val add = AddActivityController(repository, scope)
             val history = HistoryController(repository, today, scope)
             val notes = NotesController(repository, today, scope)
             listOf(home.uiState, tracker.uiState, history.uiState, notes.uiState).forEach { state -> scope.launch { state.collect() } }

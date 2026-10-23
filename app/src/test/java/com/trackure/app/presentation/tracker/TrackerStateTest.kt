@@ -25,6 +25,8 @@ class TrackerStateTest {
         val repository = InMemoryTrackureRepository.create()
         val activity = repository.activities.value[3]
         val date = today.minusDays(1)
+        // This fixture must actually be scheduled on the historical date under test.
+        repository.saveActivity(activity.copy(startDateIso = date.toString()))
         repository.logActivityCompletion(activity.id, date.toString(), "20", "15", "Ready for tomorrow")
         val selected = trackerState(date, repository.activities.value, repository.activityLogs.value)
         assertTrue(selected.rows.single { it.activity.id == activity.id }.isCompleted)

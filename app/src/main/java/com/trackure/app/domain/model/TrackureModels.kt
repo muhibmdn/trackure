@@ -5,7 +5,7 @@ import java.time.Instant
 import java.util.UUID
 
 @Serializable
-enum class SyncStatus { SYNCED, PENDING_UPLOAD, PENDING_DELETE }
+enum class SyncStatus { SYNCED, PENDING_UPLOAD, PENDING_DELETE, DELETED }
 
 @Serializable
 enum class RecurrenceFreq { DAILY, WEEKLY, MONTHLY, YEARLY, SPECIFIC_DATE, CUSTOM }

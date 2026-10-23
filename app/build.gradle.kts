@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -5,6 +7,13 @@ plugins {
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt)
 }
+
+val localProps = Properties().apply {
+    rootProject.file("local.properties").takeIf { it.isFile }?.inputStream()?.use { load(it) }
+}
+fun getLocalProperty(key: String): String = localProps.getProperty(key, "").trim().removeSurrounding("\"")
+fun buildConfigString(key: String): String = "\"" + getLocalProperty(key)
+    .replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "\\r") + "\""
 
 android {
     namespace = "com.trackure.app"
@@ -18,6 +27,9 @@ android {
         targetSdk = 37
         versionCode = 1
         versionName = "1.0.0"
+        buildConfigField("String", "SUPABASE_URL", buildConfigString("SUPABASE_URL"))
+        buildConfigField("String", "SUPABASE_ANON_KEY", buildConfigString("SUPABASE_ANON_KEY"))
+        buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", buildConfigString("GOOGLE_WEB_CLIENT_ID"))
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

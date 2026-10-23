@@ -10,7 +10,7 @@ import com.trackure.app.core.database.dao.TrackureDao
 import com.trackure.app.core.database.entity.*
 import java.time.LocalDate
 
-@Database(entities = [UserProfileEntity::class, ActivityEntity::class, ActivityLogEntity::class], version = 1, exportSchema = false)
+@Database(entities = [UserProfileEntity::class, ActivityEntity::class, ActivityLogEntity::class, ActiveAccountEntity::class], version = 2, exportSchema = false)
 @TypeConverters(Converters::class)
 abstract class TrackureDatabase : RoomDatabase() {
     abstract fun trackureDao(): TrackureDao
@@ -19,7 +19,23 @@ abstract class TrackureDatabase : RoomDatabase() {
         @Volatile private var instance: TrackureDatabase? = null
         fun getInstance(context: Context): TrackureDatabase = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(context.applicationContext, TrackureDatabase::class.java, "trackure.db")
-                .addCallback(SeedCallback).build().also { instance = it }
+                .addMigrations(MIGRATION_1_2).addCallback(SeedCallback).build().also { instance = it }
+        }
+
+        val MIGRATION_1_2 = object : androidx.room.migration.Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS active_account (slot INTEGER NOT NULL PRIMARY KEY, userId TEXT NOT NULL)")
+                db.execSQL("ALTER TABLE user_profile ADD COLUMN syncStatus TEXT NOT NULL DEFAULT 'PENDING_UPLOAD'")
+                db.execSQL("CREATE TABLE activities_new (`id` TEXT NOT NULL, `title` TEXT NOT NULL, `category` TEXT, `scheduledTime` TEXT NOT NULL, `fullScreenLockscreenTrigger` INTEGER NOT NULL, `loopActivity` INTEGER NOT NULL, `frequency` TEXT NOT NULL, `repeatDaysOfWeekCsv` TEXT NOT NULL, `specificDateIso` TEXT, `intervalCount` INTEGER NOT NULL, `endConditionType` TEXT NOT NULL, `endDate` TEXT, `endOccurrences` INTEGER, `syncStatus` TEXT NOT NULL, `updatedAt` INTEGER NOT NULL, `startDateIso` TEXT NOT NULL, `repeatOnSpecificDate` INTEGER NOT NULL, `ownerId` TEXT NOT NULL DEFAULT 'local_user', PRIMARY KEY(id, ownerId))")
+                db.execSQL("INSERT INTO activities_new (`id`, `title`, `category`, `scheduledTime`, `fullScreenLockscreenTrigger`, `loopActivity`, `frequency`, `repeatDaysOfWeekCsv`, `specificDateIso`, `intervalCount`, `endConditionType`, `endDate`, `endOccurrences`, `syncStatus`, `updatedAt`, `startDateIso`, `repeatOnSpecificDate`) SELECT `id`, `title`, `category`, `scheduledTime`, `fullScreenLockscreenTrigger`, `loopActivity`, `frequency`, `repeatDaysOfWeekCsv`, `specificDateIso`, `intervalCount`, `endConditionType`, `endDate`, `endOccurrences`, `syncStatus`, `updatedAt`, `startDateIso`, `repeatOnSpecificDate` FROM activities")
+                db.execSQL("DROP TABLE activities")
+                db.execSQL("ALTER TABLE activities_new RENAME TO activities")
+                db.execSQL("CREATE TABLE activity_logs_new (`id` TEXT NOT NULL, `activityId` TEXT NOT NULL, `activityTitle` TEXT NOT NULL, `category` TEXT, `scheduledTime` TEXT NOT NULL, `dateIso` TEXT NOT NULL, `isCompleted` INTEGER NOT NULL, `completedHour` TEXT, `completedMinute` TEXT, `note` TEXT, `syncStatus` TEXT NOT NULL, `updatedAt` INTEGER NOT NULL, `ownerId` TEXT NOT NULL DEFAULT 'local_user', PRIMARY KEY(id, ownerId))")
+                db.execSQL("INSERT INTO activity_logs_new (`id`, `activityId`, `activityTitle`, `category`, `scheduledTime`, `dateIso`, `isCompleted`, `completedHour`, `completedMinute`, `note`, `syncStatus`, `updatedAt`) SELECT `id`, `activityId`, `activityTitle`, `category`, `scheduledTime`, `dateIso`, `isCompleted`, `completedHour`, `completedMinute`, `note`, `syncStatus`, `updatedAt` FROM activity_logs")
+                db.execSQL("DROP TABLE activity_logs")
+                db.execSQL("ALTER TABLE activity_logs_new RENAME TO activity_logs")
+                db.execSQL("CREATE UNIQUE INDEX index_activity_logs_ownerId_activityId_dateIso ON activity_logs (ownerId, activityId, dateIso)")
+            }
         }
 
         // onCreate runs inside SQLite's creation transaction, before the first query is served.

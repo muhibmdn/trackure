@@ -28,7 +28,7 @@ import com.trackure.app.domain.model.UserProfile
 import com.trackure.app.ui.theme.*
 
 @Composable
-internal fun ProfileSheet(profile: UserProfile, onEdit: () -> Unit, onSwitchAccount: () -> Unit, onLogout: () -> Unit) {
+internal fun ProfileSheet(profile: UserProfile, onEdit: () -> Unit, onSwitchAccount: () -> Unit, onLogout: () -> Unit, onLogin: () -> Unit = onSwitchAccount) {
     val uriHandler = LocalUriHandler.current
     var linkError by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -52,6 +52,10 @@ internal fun ProfileSheet(profile: UserProfile, onEdit: () -> Unit, onSwitchAcco
                 }
             }
         }
+        if (profile.id.startsWith("local_")) {
+            Text("Local profile · available offline", color = TextSecondary, fontSize = 12.sp)
+            OutlinedButton(onLogin, Modifier.fillMaxWidth()) { Text("Login with Google") }
+        }
         listOf(Triple("Edit Profile", TextPrimary, onEdit), Triple("Switch Account", SportyBluePrimary, onSwitchAccount), Triple("Log Out", StravaOrangeHighlight, onLogout)).forEach { (label, color, action) ->
             OutlinedButton(action, Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), border = BorderStroke(1.dp, SurfaceBorder), colors = ButtonDefaults.outlinedButtonColors(containerColor = BackgroundCanvas, contentColor = color)) { Text(label, Modifier.fillMaxWidth().padding(vertical = 6.dp)) }
         }
@@ -59,20 +63,21 @@ internal fun ProfileSheet(profile: UserProfile, onEdit: () -> Unit, onSwitchAcco
 }
 
 @Composable
-internal fun EditProfileDialog(profile: UserProfile, saving: Boolean, onDismiss: () -> Unit, onSave: (String, String, String) -> Unit) {
+internal fun EditProfileDialog(profile: UserProfile, saving: Boolean, onDismiss: () -> Unit, title: String = "Edit Profile", requireLink: Boolean = false, onSave: (String, String, String) -> Unit) {
     var name by rememberSaveable(profile.id) { mutableStateOf(profile.name) }
     var link by rememberSaveable(profile.id) { mutableStateOf(profile.profileUrlOrEmail) }
     var motto by rememberSaveable(profile.id) { mutableStateOf(profile.motto) }
     Dialog(onDismissRequest = { if (!saving) onDismiss() }) {
         Surface(color = SurfaceCard, shape = RoundedCornerShape(16.dp), border = BorderStroke(1.dp, SurfaceBorder)) {
             Column(Modifier.fillMaxWidth().imePadding().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                Text("Edit Profile", color = TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Text(title, color = TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                if (requireLink) Text("Use a local profile now. Login with Google later to connect to cloud sync.", color = TextSecondary)
                 OutlinedTextField(name, { name = it }, label = { Text("NAME") }, singleLine = true, enabled = !saving, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(link, { link = it }, label = { Text("PROFILE LINK / EMAIL / SOCIAL URL", fontSize = 10.sp) }, singleLine = true, enabled = !saving, textStyle = TextStyle(color = SportyBluePrimary, fontFamily = FontFamily.Monospace), modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(motto, { motto = it }, label = { Text("MOTTO") }, enabled = !saving, modifier = Modifier.fillMaxWidth())
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                     TextButton(onDismiss, enabled = !saving) { Text("Cancel", color = TextSecondary) }
-                    TextButton({ onSave(name, link, motto) }, enabled = !saving && name.isNotBlank(), colors = ButtonDefaults.textButtonColors(contentColor = StravaOrangeHighlight)) { Text(if (saving) "Saving..." else "Save Changes") }
+                    TextButton({ onSave(name, link, motto) }, enabled = !saving && name.isNotBlank() && (!requireLink || link.isNotBlank()), colors = ButtonDefaults.textButtonColors(contentColor = StravaOrangeHighlight)) { Text(if (saving) "Saving..." else "Save Changes") }
                 }
             }
         }
