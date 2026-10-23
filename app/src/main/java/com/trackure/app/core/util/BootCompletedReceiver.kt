@@ -28,9 +28,13 @@ internal fun enqueueAlarmRecovery(context: Context) {
 class AlarmRecoveryWorker(context: Context, parameters: WorkerParameters) : CoroutineWorker(context, parameters) {
     override suspend fun doWork(): Result = try {
         val scheduler = AndroidLockscreenAlarmScheduler(applicationContext)
-        val activities = TrackureDatabase.getInstance(applicationContext).trackureDao().getLockscreenActivitiesOnce()
+        val dao = TrackureDatabase.getInstance(applicationContext).trackureDao()
+        val activities = dao.getLockscreenActivitiesOnce()
         activities.forEach {
-            scheduler.scheduleNextOccurrence(it.toDomain())
+            val today = java.time.LocalDate.now().toString()
+            if (dao.getLogForActivityOnDate(it.id, today)?.isCompleted == true)
+                scheduler.onActivityCompleted(it.toDomain(), today)
+            else scheduler.scheduleNextOccurrence(it.toDomain())
         }
         scheduler.restoreSnoozes(activities.map { it.id }.toSet())
         Result.success()

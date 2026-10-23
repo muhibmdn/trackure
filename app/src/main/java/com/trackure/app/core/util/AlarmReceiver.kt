@@ -15,6 +15,7 @@ import com.trackure.app.core.database.TrackureDatabase
 import com.trackure.app.core.database.toDomain
 import com.trackure.app.presentation.lockscreen.LockscreenTriggerActivity
 import kotlinx.coroutines.*
+import java.time.*
 
 class AlarmReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -26,15 +27,26 @@ class AlarmReceiver : BroadcastReceiver() {
         wakeLock.acquire(10_000L)
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                val activity = if (id == "test") null else TrackureDatabase.getInstance(context)
-                    .trackureDao().getActivityOnce(id)?.toDomain()
+                val dao = TrackureDatabase.getInstance(context).trackureDao()
+                val activity = if (id == "test") null else dao.getActivityOnce(id)?.toDomain()
+                val scheduler = AndroidLockscreenAlarmScheduler(context)
                 if (kind == "snooze") AndroidLockscreenAlarmScheduler(context).clearSnooze(id)
                 if (id != "test" && activity?.fullScreenLockscreenTrigger != true) return@launch
                 val title = activity?.title ?: intent.getStringExtra("title") ?: "Jadwal Tes"
                 val time = activity?.scheduledTime ?: intent.getStringExtra("scheduledTime").orEmpty()
-                showAlarm(context, id, title, time)
-                if (kind == "scheduled" && activity != null)
-                    AndroidLockscreenAlarmScheduler(context).scheduleNextOccurrence(activity)
+                val now = ZonedDateTime.now()
+                val eventAt = intent.getLongExtra("eventAt", 0L).takeIf { it > 0 }
+                    ?: now.toLocalDate().atTime(LocalTime.parse(time)).atZone(now.zone).toInstant().toEpochMilli()
+                val event = Instant.ofEpochMilli(eventAt).atZone(now.zone)
+                if (activity != null && dao.getLogForActivityOnDate(id, event.toLocalDate().toString())?.isCompleted == true) {
+                    scheduler.cancelTrigger(id)
+                    scheduler.scheduleNextOccurrence(activity, maxOf(now, event))
+                    return@launch
+                }
+                showAlarm(context, id, title, time, eventAt)
+                // Pre-reminders must leave the remaining stages of this occurrence intact.
+                if ((kind == "scheduled" || kind == "stage_0") && activity != null)
+                    scheduler.scheduleNextOccurrence(activity, maxOf(now, event))
             } catch (e: Exception) {
                 Log.e("TrackureAlarm", "Unable to deliver alarm", e)
             } finally {
@@ -44,7 +56,7 @@ class AlarmReceiver : BroadcastReceiver() {
         }
     }
 
-    private fun showAlarm(context: Context, id: String, title: String, time: String) {
+    private fun showAlarm(context: Context, id: String, title: String, time: String, eventAt: Long) {
         val notifications = context.getSystemService(NotificationManager::class.java)
         val audio = AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM).build()
         notifications.createNotificationChannel(NotificationChannel(CHANNEL, "Lockscreen alarms", NotificationManager.IMPORTANCE_HIGH).apply {
@@ -52,12 +64,12 @@ class AlarmReceiver : BroadcastReceiver() {
             lockscreenVisibility = NotificationCompat.VISIBILITY_PUBLIC
             setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM), audio)
             enableVibration(true)
-            vibrationPattern = longArrayOf(0, 250, 750, 250)
+            vibrationPattern = longArrayOf(0, 600, 400, 600, 800)
         })
         val launch = Intent(context, LockscreenTriggerActivity::class.java)
             .setData(android.net.Uri.Builder().scheme("trackure-alarm").authority("display").appendPath(id).build())
             .putExtra("activityId", id).putExtra("title", title).putExtra("scheduledTime", time)
-            .putExtra("leadMinutes", 0).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            .putExtra("eventAt", eventAt).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         val options = ActivityOptions.makeBasic()
         if (Build.VERSION.SDK_INT >= 36) {
             options.setPendingIntentCreatorBackgroundActivityStartMode(ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOW_ALWAYS)
@@ -69,7 +81,7 @@ class AlarmReceiver : BroadcastReceiver() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE, options.toBundle())
         val notification = NotificationCompat.Builder(context, CHANNEL)
             .setSmallIcon(com.trackure.app.R.drawable.ic_alarm_notification)
-            .setContentTitle(title).setContentText("Hari ini ${time.replace(':', '.')} · Jadwal dimulai sekarang")
+            .setContentTitle(title).setContentText("$time · ${alarmCountdownText(eventAt, System.currentTimeMillis())}")
             .setCategory(NotificationCompat.CATEGORY_ALARM).setPriority(NotificationCompat.PRIORITY_HIGH)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC).setContentIntent(fullScreen)
             .setAutoCancel(true).setTimeoutAfter(5 * 60_000L)

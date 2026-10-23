@@ -1,6 +1,7 @@
 package com.trackure.app.presentation.lockscreen
 
 import android.content.Intent
+import android.app.KeyguardManager
 import android.media.AudioAttributes
 import android.media.Ringtone
 import android.media.RingtoneManager
@@ -32,12 +33,19 @@ import androidx.compose.ui.unit.sp
 import com.trackure.app.core.util.AlarmReceiver
 import com.trackure.app.core.util.AndroidLockscreenAlarmScheduler
 import com.trackure.app.ui.theme.TrackureTheme
+import com.trackure.app.MainActivity
+import com.trackure.app.core.util.alarmCountdownText
+import kotlinx.coroutines.delay
+import java.time.LocalDate
+import java.time.LocalTime
+import java.time.ZoneId
 
 class LockscreenTriggerActivity : ComponentActivity() {
     private var ringtone: Ringtone? = null
     private var vibrator: Vibrator? = null
     private val handler = Handler(Looper.getMainLooper())
-    private val timeout = Runnable { dismiss() }
+    // Limit continuous noise, but keep the live countdown available until an action is chosen.
+    private val timeout = Runnable { stopAlerts() }
     private var alarmIntent by mutableStateOf<Intent?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -58,13 +66,15 @@ class LockscreenTriggerActivity : ComponentActivity() {
                 BackHandler { dismiss() }
                 key(current) {
                     LockscreenAlarmContent(current.getStringExtra("title") ?: "Jadwal Tes",
-                        current.getStringExtra("scheduledTime").orEmpty(), current.getIntExtra("leadMinutes", 0),
+                        current.getStringExtra("scheduledTime").orEmpty(),
+                        onOpenApp = ::openTracker, eventAt = current.getLongExtra("eventAt", 0L),
                         onDismiss = ::dismiss, onSnooze = { minutes ->
+                            stopAlerts()
                             try {
                                 AndroidLockscreenAlarmScheduler(this).scheduleSnoozeTrigger(
                                     current.getStringExtra("activityId") ?: "test",
                                     current.getStringExtra("title") ?: "Jadwal Tes",
-                                    current.getStringExtra("scheduledTime").orEmpty(), minutes)
+                                    current.getStringExtra("scheduledTime").orEmpty(), minutes, current.getLongExtra("eventAt", 0L))
                                 Toast.makeText(this, "Snoozed for $minutes minutes", Toast.LENGTH_SHORT).show()
                                 dismiss()
                             } catch (_: RuntimeException) {
@@ -84,6 +94,7 @@ class LockscreenTriggerActivity : ComponentActivity() {
     }
 
     private fun acceptAlarm(intent: Intent) {
+        openingTracker = false
         alarmIntent = intent
         AlarmReceiver.cancelNotification(this, intent.getStringExtra("activityId") ?: "test")
         val audio = AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM)
@@ -99,7 +110,7 @@ class LockscreenTriggerActivity : ComponentActivity() {
         }
         vibrator = if (Build.VERSION.SDK_INT >= 31) getSystemService(VibratorManager::class.java).defaultVibrator
             else @Suppress("DEPRECATION") (getSystemService(VIBRATOR_SERVICE) as Vibrator)
-        val effect = VibrationEffect.createWaveform(longArrayOf(0, 250, 1000, 250, 2000), 0)
+        val effect = VibrationEffect.createWaveform(longArrayOf(0, 600, 400, 600, 800), 0)
         if (Build.VERSION.SDK_INT >= 33) {
             vibrator?.vibrate(effect, VibrationAttributes.Builder().setUsage(VibrationAttributes.USAGE_ALARM).build())
         } else {
@@ -123,6 +134,31 @@ class LockscreenTriggerActivity : ComponentActivity() {
         finishAndRemoveTask()
     }
 
+    private var openingTracker = false
+    private fun openTracker() {
+        stopAlerts()
+        if (openingTracker) return
+        openingTracker = true
+        fun launchTracker() {
+            if (isFinishing || isDestroyed) return
+            startActivity(Intent(this, MainActivity::class.java)
+                .putExtra(MainActivity.EXTRA_OPEN_TAB, "TRACKER")
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP))
+            dismiss()
+        }
+        val keyguard = getSystemService(KeyguardManager::class.java)
+        if (Build.VERSION.SDK_INT >= 26 && keyguard.isKeyguardLocked) {
+            keyguard.requestDismissKeyguard(this, object : KeyguardManager.KeyguardDismissCallback() {
+                override fun onDismissSucceeded() = launchTracker()
+                override fun onDismissCancelled() { openingTracker = false }
+                override fun onDismissError() {
+                    openingTracker = false
+                    Toast.makeText(this@LockscreenTriggerActivity, "Unlock your phone to open Trackure", Toast.LENGTH_SHORT).show()
+                }
+            })
+        } else launchTracker()
+    }
+
     override fun onDestroy() {
         stopAlerts()
         super.onDestroy()
@@ -130,9 +166,21 @@ class LockscreenTriggerActivity : ComponentActivity() {
 }
 
 @Composable
-internal fun LockscreenAlarmContent(title: String, scheduledTime: String, leadMinutes: Int,
-    onDismiss: () -> Unit, onSnooze: (Int) -> Unit) {
+internal fun LockscreenAlarmContent(title: String, scheduledTime: String,
+    onDismiss: () -> Unit, onSnooze: (Int) -> Unit, onOpenApp: () -> Unit, eventAt: Long = 0L) {
     var snoozeMinutes by remember { mutableIntStateOf(5) }
+    val target = remember(scheduledTime, eventAt) {
+        eventAt.takeIf { it > 0 } ?: runCatching {
+            LocalDate.now().atTime(LocalTime.parse(scheduledTime)).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        }.getOrDefault(System.currentTimeMillis())
+    }
+    var countdown by remember(target) { mutableStateOf(alarmCountdownText(target, System.currentTimeMillis())) }
+    LaunchedEffect(scheduledTime, target) {
+        while (true) {
+            countdown = alarmCountdownText(target, System.currentTimeMillis())
+            delay(1_000)
+        }
+    }
     BoxWithConstraints(Modifier.fillMaxSize().background(Brush.verticalGradient(
         listOf(Color(0xFF072227), Color(0xFF0F3842), Color(0xFFD6B96E))))) {
         Column(Modifier.fillMaxWidth().padding(top = maxHeight * 0.27f).padding(horizontal = 28.dp),
@@ -140,12 +188,17 @@ internal fun LockscreenAlarmContent(title: String, scheduledTime: String, leadMi
             Text(title, color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
             Spacer(Modifier.height(12.dp))
             Text("Hari ini ${scheduledTime.replace(':', '.')}", fontSize = 16.sp, color = Color.White.copy(alpha = 0.9f))
-            Text(if (leadMinutes == 0) "Jadwal dimulai sekarang" else "Dimulai dalam $leadMinutes mnt",
+            Text(countdown,
                 fontSize = 15.sp, color = Color.White.copy(alpha = 0.8f))
             Spacer(Modifier.height(36.dp))
             Button(onDismiss, Modifier.width(136.dp).height(48.dp), shape = RoundedCornerShape(50),
                 colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.18f), contentColor = Color.White)) {
                 Text("Abaikan", fontSize = 15.sp, fontWeight = FontWeight.Bold)
+            }
+            Spacer(Modifier.height(12.dp))
+            Button(onOpenApp, Modifier.width(180.dp).height(48.dp), shape = RoundedCornerShape(50),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFC4C02).copy(alpha = 0.88f), contentColor = Color.White)) {
+                Text("Buka Trackure", fontSize = 15.sp, fontWeight = FontWeight.Bold)
             }
         }
         Row(Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 48.dp)

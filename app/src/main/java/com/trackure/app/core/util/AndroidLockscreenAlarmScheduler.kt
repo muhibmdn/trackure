@@ -19,23 +19,41 @@ class AndroidLockscreenAlarmScheduler(context: Context) : LockscreenAlarmSchedul
         scheduleNextOccurrence(activity)
     }
 
-    internal fun scheduleNextOccurrence(activity: ActivityItem) {
-        val next = nextAlarmOccurrence(activity, ZonedDateTime.now())
+    internal fun scheduleNextOccurrence(activity: ActivityItem, after: ZonedDateTime = ZonedDateTime.now()) {
+        cancelStages(activity.id)
+        val next = nextAlarmOccurrence(activity, after)
         if (next == null) {
             cancelPending(activity.id, "scheduled")
             return
         }
-        schedule(activity.id, activity.title, activity.scheduledTime, "scheduled", next.toInstant().toEpochMilli())
+        val eventAt = next.toInstant().toEpochMilli()
+        futureReminderStages(eventAt, System.currentTimeMillis()).forEach { (offset, at) ->
+            schedule(activity.id, activity.title, activity.scheduledTime, "stage_$offset", at, eventAt)
+        }
+    }
+
+    override fun onActivityCompleted(activity: ActivityItem, dateIso: String) {
+        val now = ZonedDateTime.now()
+        if (dateIso != now.toLocalDate().toString()) return
+        cancelTrigger(activity.id)
+        scheduleNextOccurrence(activity, maxOf(now, now.toLocalDate()
+            .atTime(java.time.LocalTime.parse(activity.scheduledTime)).atZone(now.zone)))
+    }
+
+    private fun cancelStages(id: String) {
+        cancelPending(id, "scheduled") // Cancel alarms installed by older app versions.
+        reminderOffsets.forEach { cancelPending(id, "stage_$it") }
     }
 
     override fun cancelTrigger(activityId: String) {
+        cancelStages(activityId)
         listOf("scheduled", "snooze").forEach { cancelPending(activityId, it) }
         clearSnooze(activityId)
         AlarmReceiver.cancelNotification(context, activityId)
     }
 
     private fun cancelPending(id: String, kind: String) {
-        PendingIntent.getBroadcast(context, 0, alarmIntent(id, kind),
+        PendingIntent.getBroadcast(context, requestCode(id, kind), alarmIntent(id, kind),
             PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE)?.let { alarms.cancel(it); it.cancel() }
     }
 
@@ -49,16 +67,16 @@ class AndroidLockscreenAlarmScheduler(context: Context) : LockscreenAlarmSchedul
             if (record == null || (id !in enabledIds && id != "test") || at < now - 5 * 60_000L) {
                 clearSnooze(id)
             } else {
-                schedule(id, record.getString("title"), record.getString("time"), "snooze", maxOf(at, now + 1_000L))
+                schedule(id, record.getString("title"), record.getString("time"), "snooze", maxOf(at, now + 1_000L), record.optLong("eventAt", 0L))
             }
         }
     }
 
-    fun scheduleSnoozeTrigger(activityId: String, title: String, scheduledTime: String, snoozeMinutes: Int) {
+    fun scheduleSnoozeTrigger(activityId: String, title: String, scheduledTime: String, snoozeMinutes: Int, eventAt: Long = 0L) {
         require(snoozeMinutes in 1..60)
         val at = System.currentTimeMillis() + snoozeMinutes * 60_000L
-        schedule(activityId, title, scheduledTime, "snooze", at)
-        val record = org.json.JSONObject().put("title", title).put("time", scheduledTime).put("at", at)
+        schedule(activityId, title, scheduledTime, "snooze", at, eventAt)
+        val record = org.json.JSONObject().put("title", title).put("time", scheduledTime).put("at", at).put("eventAt", eventAt)
         snoozes.edit().putString(activityId, record.toString()).apply()
     }
 
@@ -71,9 +89,12 @@ class AndroidLockscreenAlarmScheduler(context: Context) : LockscreenAlarmSchedul
         .setData(Uri.Builder().scheme("trackure-alarm").authority(kind).appendPath(id).build())
         .putExtra("activityId", id).putExtra("kind", kind)
 
-    private fun schedule(id: String, title: String, time: String, kind: String, at: Long) {
+    private fun requestCode(id: String, kind: String) = if (kind.startsWith("stage_")) (id + "_" + kind).hashCode() else 0
+
+    private fun schedule(id: String, title: String, time: String, kind: String, at: Long, eventAt: Long = 0L) {
         val intent = alarmIntent(id, kind).putExtra("title", title).putExtra("scheduledTime", time)
-        val pending = PendingIntent.getBroadcast(context, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+            .putExtra("eventAt", eventAt)
+        val pending = PendingIntent.getBroadcast(context, requestCode(id, kind), intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         if (Build.VERSION.SDK_INT < 31 || alarms.canScheduleExactAlarms()) {
             try {
                 alarms.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pending)

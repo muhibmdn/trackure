@@ -73,6 +73,7 @@ fun AddActivityScreen(sharedViewModel: com.trackure.app.presentation.TrackureVie
     LaunchedEffect(viewModel) {
         viewModel.events.collect { event ->
             when (event) {
+                AddActivityEvent.Deleted -> { editorMode = null; Toast.makeText(context, "Activity deleted", Toast.LENGTH_SHORT).show() }
                 is AddActivityEvent.Saved -> { editorMode = null; Toast.makeText(context, "Saved: ${event.title}", Toast.LENGTH_SHORT).show() }
                 is AddActivityEvent.Message -> Toast.makeText(context, event.text, Toast.LENGTH_LONG).show()
                 AddActivityEvent.ExportReady -> try { exportLauncher.launch("trackure_schedule.ics") }
@@ -95,7 +96,7 @@ fun AddActivityScreen(sharedViewModel: com.trackure.app.presentation.TrackureVie
             }, viewModel::prepareExport, modifier)
     } else {
         key(mode) {
-            ActivityEditor(mode, activities.mapNotNull { it.category }, busy, { editorMode = null }, viewModel::save, modifier)
+            ActivityEditor(mode, activities.mapNotNull { it.category }, busy, { editorMode = null }, viewModel::save, viewModel::delete, modifier)
         }
     }
 }
@@ -142,7 +143,7 @@ private fun ActivityList(activities: List<ActivityItem>, busy: Boolean, onAdd: (
 }
 
 @Composable
-private fun ActivityEditor(mode: ActivityEditorMode, existingCategories: List<String>, busy: Boolean, onCancel: () -> Unit, onSave: (ActivityItem) -> Unit, modifier: Modifier) {
+private fun ActivityEditor(mode: ActivityEditorMode, existingCategories: List<String>, busy: Boolean, onCancel: () -> Unit, onSave: (ActivityItem) -> Unit, onDelete: (String) -> Unit, modifier: Modifier) {
     var item by rememberSaveable(stateSaver = ItemSaver) {
         mutableStateOf((mode as? ActivityEditorMode.Edit)?.activity ?: ActivityItem(title = "", scheduledTime = "08:00", repeatDaysOfWeek = (1..7).toSet()))
     }
@@ -290,6 +291,13 @@ private fun ActivityEditor(mode: ActivityEditorMode, existingCategories: List<St
                 if (validationError == null) onSave(item)
             }, Modifier.fillMaxWidth().height(44.dp), enabled = !busy, shape = SmallShape, colors = ButtonDefaults.buttonColors(containerColor = StravaOrangeHighlight, contentColor = Color.White)) {
                 Text(if (busy) "SAVING..." else "SAVE ACTIVITY", fontWeight = FontWeight.Bold)
+            }
+            if (mode is ActivityEditorMode.Edit) {
+                OutlinedButton({ onDelete(mode.activity.id) }, Modifier.fillMaxWidth().height(44.dp),
+                    enabled = !busy, shape = SmallShape, border = BorderStroke(1.dp, Color(0xFFFC4C02)),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFFC4C02))) {
+                    Text("Delete Activity", fontWeight = FontWeight.Bold)
+                }
             }
         }
     }

@@ -20,11 +20,13 @@ class LockscreenAlarmTest {
     @Test fun snoozeBoundsAndDismiss() {
         var snoozed = 0
         var dismissed = false
+        var opened = false
         compose.setContent { TrackureTheme {
-            LockscreenAlarmContent("Jadwal Tes", "07:15", 0, { dismissed = true }, { snoozed = it })
+            LockscreenAlarmContent("Jadwal Tes", "07:15", { dismissed = true }, { snoozed = it }, { opened = true })
         } }
         compose.onNodeWithText("Hari ini 07.15").assertIsDisplayed()
-        compose.onNodeWithText("Jadwal dimulai sekarang").assertIsDisplayed()
+        compose.onNodeWithText("Buka Trackure").performClick()
+        compose.runOnIdle { assertTrue(opened) }
         compose.onNodeWithContentDescription("Decrease snooze").performClick()
         compose.onNodeWithContentDescription("Decrease snooze").performClick()
         compose.onNodeWithText("Snooze 1 menit").assertIsDisplayed()
@@ -33,6 +35,26 @@ class LockscreenAlarmTest {
         compose.runOnIdle { assertEquals(60, snoozed) }
         compose.onNodeWithText("Abaikan").performClick()
         compose.runOnIdle { assertTrue(dismissed) }
+    }
+
+    @Test fun allProgressiveStagesAreDistinctAndCancelledTogether() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val scheduler = AndroidLockscreenAlarmScheduler(context)
+        val tomorrow = java.time.LocalDate.now().plusDays(1).toString()
+        val item = com.trackure.app.domain.model.ActivityItem(id = "stage-test", title = "Stages",
+            scheduledTime = "12:45", fullScreenLockscreenTrigger = true, loopActivity = false, specificDate = tomorrow)
+        fun pending(offset: Int) = PendingIntent.getBroadcast(context, (item.id + "_stage_" + offset).hashCode(),
+            Intent(context, AlarmReceiver::class.java).setData(Uri.Builder()
+                .scheme("trackure-alarm").authority("stage_$offset").appendPath(item.id).build()),
+            PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE)
+        try {
+            scheduler.scheduleFullScreenTrigger(item)
+            val offsets = listOf(30, 15, 10, 5, 0)
+            offsets.forEach { assertNotNull(pending(it)) }
+            assertEquals(5, offsets.map { pending(it) }.toSet().size)
+            scheduler.cancelTrigger(item.id)
+            offsets.forEach { assertNull(pending(it)) }
+        } finally { scheduler.cancelTrigger(item.id) }
     }
 
     @Test fun distinctIdsWithSameHashHaveIndependentCancelableSnoozes() {

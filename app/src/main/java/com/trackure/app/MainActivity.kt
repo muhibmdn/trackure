@@ -49,14 +49,27 @@ enum class TrackureTab(val label: String, val icon: ImageVector, val isCenterAdd
 }
 
 class MainActivity : ComponentActivity() {
+    companion object { const val EXTRA_OPEN_TAB = "EXTRA_OPEN_TAB" }
+    private var requestedTab by mutableStateOf<String?>(null)
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        requestedTab = intent.getStringExtra(EXTRA_OPEN_TAB)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        requestedTab = intent.getStringExtra(EXTRA_OPEN_TAB)
         enableEdgeToEdge()
         setContent {
             TrackureTheme {
                 val repository = remember { PersistentTrackureRepository.getInstance(applicationContext) }
                 val active by repository.isAuthenticatedOrLocalActive.collectAsStateWithLifecycle()
-                if (active) TrackureMainAppShell()
+                if (active) TrackureMainAppShell(requestedTab) {
+                    requestedTab = null
+                    intent.removeExtra(EXTRA_OPEN_TAB)
+                }
                 else com.trackure.app.presentation.auth.AuthScreen(repository)
             }
         }
@@ -65,7 +78,7 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TrackureMainAppShell() {
+fun TrackureMainAppShell(requestedTab: String? = null, onTabOpened: () -> Unit = {}) {
     val activityContext = androidx.compose.ui.platform.LocalContext.current
     val context = activityContext.applicationContext
     val repository = remember(context) { PersistentTrackureRepository.getInstance(context) }
@@ -84,6 +97,12 @@ fun TrackureMainAppShell() {
     val syncStatus by repository.syncStatus.collectAsStateWithLifecycle()
     var syncing by remember { mutableStateOf(false) }
     var currentTab by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(TrackureTab.HOME) }
+    LaunchedEffect(requestedTab) {
+        if (requestedTab == "TRACKER") {
+            currentTab = TrackureTab.TRACKER
+            onTabOpened()
+        }
+    }
     val viewModel: com.trackure.app.presentation.TrackureViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
         key = profile.id,
         factory = androidx.lifecycle.viewmodel.viewModelFactory {

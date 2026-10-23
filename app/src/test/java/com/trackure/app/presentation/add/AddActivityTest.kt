@@ -3,11 +3,22 @@
 import com.trackure.app.data.repository.InMemoryTrackureRepository
 import com.trackure.app.domain.model.*
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.flow.first
 import kotlinx.serialization.json.Json
 import org.junit.Assert.*
 import org.junit.Test
 
 class AddActivityTest {
+    @Test fun deleteQueuesRepositoryDeletionBeforeReturningToList() = runBlocking {
+        val repository = InMemoryTrackureRepository.create()
+        val item = ActivityItem(title = "Delete me", scheduledTime = "08:00")
+        repository.saveActivity(item)
+        val controller = AddActivityController(repository, this)
+        controller.delete(item.id)
+        assertEquals(AddActivityEvent.Deleted, controller.events.first())
+        assertFalse(repository.activities.value.any { it.id == item.id && it.syncStatus != SyncStatus.PENDING_DELETE })
+    }
+
     @Test fun validatesRequiredNameTimeAndRecurrenceFields() {
         val item = ActivityItem(title = "Study", scheduledTime = "08:00")
         assertNull(validateActivity(item))

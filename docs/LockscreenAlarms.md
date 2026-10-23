@@ -1,14 +1,16 @@
 # Lockscreen alarms
 
-The Android scheduler is connected to the existing activity save flow. It schedules the next local-time occurrence at the activity's exact time (leadMinutes = 0), then advances the recurrence after delivery. Editing or disabling the option cancels the old scheduled and snoozed alarms. PendingIntent identity uses the complete activity ID and alarm kind, avoiding hash collisions.
+The Android scheduler is connected to the activity save flow. It schedules future stages at 30, 15, 10, 5, and 0 minutes before the next local-time occurrence, then advances recurrence after the zero-minute stage. Editing, deleting, or disabling the option cancels the stages and snooze. Each stage has a deterministic request code and a URI containing the complete activity ID and stage, so hash collisions cannot merge alarms.
+
+Completion cancels the remaining stages for that day and schedules the next recurrence. The receiver also checks Room completion before displaying a reminder, and recovery skips today's completed occurrence. Event epoch milliseconds travel with reminders and snoozes so the one-second countdown handles midnight correctly.
 
 Room remains the source of truth for recurrence. Recovery runs through WorkManager after boot, exact-alarm access grants, clock/timezone changes, application updates, and app startup. Snooze timestamps are stored locally and restored after reboot; snoozes overdue by more than five minutes are discarded. The device must be unlocked once after boot before credential-protected Room data is available.
 
-Notifications use a high-importance alarm channel and a full-screen PendingIntent. Android decides whether to show a full-screen activity or a heads-up notification. Direct activity launch is attempted only on pre-Android-10 devices or when overlay access is already granted. This implementation does not request overlay access or unlock a secure keyguard. The screen displays above it. Denied notification/full-screen access and user-disabled channels cannot be overridden.
+Notifications use a high-importance alarm channel and a full-screen PendingIntent. Android decides whether to show a full-screen activity or a heads-up notification. Direct activity launch is attempted only on pre-Android-10 devices or when overlay access is already granted. The screen displays above the keyguard. Buka Trackure stops alerts, requests system keyguard dismissal, and opens the Tracker tab only after successful unlock. Denied notification/full-screen access and user-disabled channels cannot be overridden.
 
 The permission flow requests notifications, exact alarms, and full-screen intents sequentially. Normal schedules fall back to a ten-minute inexact window if exact-alarm access is unavailable; the five-second test requires permissions and explains missing access instead of promising exact delivery. Both exact-alarm permissions requested in the task are declared; USE_EXACT_ALARM is intended for qualifying alarm/calendar apps and needs distribution-policy review before publishing.
 
-Sound and vibration stop on dismiss, successful snooze, activity destruction, replacement by another alarm, or a five-minute safety timeout. An alarm delivered without opening the activity uses the notification channel's sound/vibration instead.
+Sound and vibration stop on dismiss, opening Trackure, snooze, activity destruction, replacement by another alarm, or a five-minute safety timeout. The timeout leaves the live countdown visible. Vibration repeats the 0/600/400/600/800 ms pattern with alarm usage attributes; device interruption policies still apply. An alarm delivered without opening the activity uses the notification channel's sound/vibration instead.
 
 ## Device verification
 

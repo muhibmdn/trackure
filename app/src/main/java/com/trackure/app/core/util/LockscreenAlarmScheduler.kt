@@ -9,6 +9,7 @@ import com.trackure.app.domain.model.ActivityItem
 interface LockscreenAlarmScheduler {
     fun scheduleFullScreenTrigger(activity: ActivityItem)
     fun cancelTrigger(activityId: String)
+    fun onActivityCompleted(activity: ActivityItem, dateIso: String) = Unit
 }
 
 /** This phase stores preferences only; it does not install Android alarms. */

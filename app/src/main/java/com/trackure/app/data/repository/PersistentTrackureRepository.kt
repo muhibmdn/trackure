@@ -145,15 +145,22 @@ class PersistentTrackureRepository(
         }
     }
 
-    override suspend fun logActivityCompletion(activityId: String, dateIso: String, hour: String, minute: String, note: String) = persistAndSync {
-        LocalDate.parse(dateIso)
-        val time = LocalTime.of(hour.toInt(), minute.toInt())
-        val item = dao.getAllActivitiesOnce().single { it.id == activityId }.toDomain()
-        val old = dao.getLogForActivityOnDate(activityId, dateIso)?.toDomain()
-            ?: ActivityLog(activityId = item.id, activityTitle = item.title, category = item.category, scheduledTime = item.scheduledTime, dateIso = dateIso)
-        dao.upsertActivityLog(old.copy(isCompleted = true, completedHour = time.hour.toString().padStart(2, '0'),
-            completedMinute = time.minute.toString().padStart(2, '0'), note = note,
-            updatedAt = nextTimestamp(old.updatedAt), syncStatus = SyncStatus.PENDING_UPLOAD).toEntity().copy(ownerId = dao.activeUserId()))
+    override suspend fun logActivityCompletion(activityId: String, dateIso: String, hour: String, minute: String, note: String) {
+        val completed = persistAndSync {
+            LocalDate.parse(dateIso)
+            val time = LocalTime.of(hour.toInt(), minute.toInt())
+            val item = dao.getAllActivitiesOnce().single { it.id == activityId }.toDomain()
+            val old = dao.getLogForActivityOnDate(activityId, dateIso)?.toDomain()
+                ?: ActivityLog(activityId = item.id, activityTitle = item.title, category = item.category, scheduledTime = item.scheduledTime, dateIso = dateIso)
+            dao.upsertActivityLog(old.copy(isCompleted = true, completedHour = time.hour.toString().padStart(2, '0'),
+                completedMinute = time.minute.toString().padStart(2, '0'), note = note,
+                updatedAt = nextTimestamp(old.updatedAt), syncStatus = SyncStatus.PENDING_UPLOAD).toEntity().copy(ownerId = dao.activeUserId()))
+            item
+        }
+        try {
+            withContext(Dispatchers.IO) { alarmScheduler.onActivityCompleted(completed, dateIso) }
+        } catch (e: CancellationException) { throw e
+        } catch (_: Exception) { onAlarmRecovery() }
     }
 
     override suspend fun saveOrUpdateNote(dateIso: String, activityTitle: String, noteContent: String, originalLogId: String?) = persistAndSync {

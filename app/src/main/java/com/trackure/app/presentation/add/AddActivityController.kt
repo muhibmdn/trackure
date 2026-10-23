@@ -55,6 +55,7 @@ internal fun recurrenceIntervalUnit(item: ActivityItem): String = when (item.fre
 sealed interface AddActivityEvent {
     data class Message(val text: String) : AddActivityEvent
     data class Saved(val title: String) : AddActivityEvent
+    data object Deleted : AddActivityEvent
     data object ExportReady : AddActivityEvent
 }
 
@@ -83,6 +84,10 @@ class AddActivityController(private val repository: TrackureRepository, private 
         // Persistence succeeds independently of platform permission or scheduling failures.
         channel.send(AddActivityEvent.Saved(saved.title))
 
+    }
+    fun delete(activityId: String) = work {
+        repository.deleteActivity(activityId)
+        channel.send(AddActivityEvent.Deleted)
     }
     fun importIcs(read: suspend () -> String) = work {
         val content = withContext(Dispatchers.IO) { read() }
