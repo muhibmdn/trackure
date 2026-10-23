@@ -13,6 +13,34 @@ import org.junit.Test
 import java.util.UUID
 
 class TrackureDatabaseTest {
+    @Test fun requeueIncludesSyncedRowsButPreservesDeletionsAndOtherAccounts() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val db = Room.inMemoryDatabaseBuilder(context, TrackureDatabase::class.java).build()
+        try {
+            val dao = db.trackureDao()
+            val item = ActivityItem(id = "activity", title = "Run", scheduledTime = "10:00").toEntity()
+            for (owner in listOf("account-a", "account-b")) {
+                for (status in listOf("SYNCED", "PENDING_UPLOAD", "PENDING_DELETE", "DELETED")) {
+                    dao.upsertActivity(item.copy(id = status, ownerId = owner, syncStatus = status, updatedAt = 123))
+                    dao.upsertActivityLog(ActivityLogEntity(status, status, "Run", null, "10:00",
+                        "2026-10-23", false, null, null, null, status, 123, owner))
+                }
+            }
+            dao.markWorkspacePendingUpload("account-a")
+            for (owner in listOf("account-a", "account-b")) {
+                val expected = if (owner == "account-a") "PENDING_UPLOAD" else "SYNCED"
+                assertEquals(expected, dao.activitiesFor(owner).first { it.id == "SYNCED" }.syncStatus)
+                assertEquals(expected, dao.logsFor(owner).first { it.id == "SYNCED" }.syncStatus)
+                for (status in listOf("PENDING_UPLOAD", "PENDING_DELETE", "DELETED")) {
+                    assertEquals(status, dao.activitiesFor(owner).first { it.id == status }.syncStatus)
+                    assertEquals(status, dao.logsFor(owner).first { it.id == status }.syncStatus)
+                }
+                assertTrue(dao.activitiesFor(owner).all { it.updatedAt == 123L })
+                assertTrue(dao.logsFor(owner).all { it.updatedAt == 123L })
+            }
+        } finally { db.close() }
+    }
+
     @Test fun accountWorkspacesAndUploadAcknowledgementsAreIsolated() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val db = Room.inMemoryDatabaseBuilder(context, TrackureDatabase::class.java).build()

@@ -14,7 +14,7 @@ class CloudDtoTest {
         val wire = json.encodeToJsonElement(row.toCloud()).jsonObject
         assertEquals(setOf("id", "name", "profile_url_or_email", "motto", "avatar_url", "updated_at"), wire.keys)
         assertEquals(owner, wire.getValue("id").jsonPrimitive.content)
-        assertEquals("1970-01-01T00:00:01Z", wire.getValue("updated_at").jsonPrimitive.content)
+        assertEquals(JsonPrimitive(1000L), wire.getValue("updated_at"))
         assertEquals(JsonNull, wire["avatar_url"])
         assertEquals(row.copy(syncStatus = "SYNCED"), json.decodeFromJsonElement<ProfileDto>(wire).toEntity())
     }
@@ -27,6 +27,7 @@ class CloudDtoTest {
             "loop_activity", "frequency", "repeat_days_of_week_csv", "specific_date_iso", "interval_count",
             "end_condition_type", "end_date", "end_occurrences", "updated_at"), wire.keys)
         assertEquals(owner, wire.getValue("user_id").jsonPrimitive.content)
+        assertEquals(JsonPrimitive(1000L), wire.getValue("updated_at"))
         val restored = json.decodeFromJsonElement<ActivityDto>(wire).toEntity()
         assertEquals(row.copy(syncStatus = "SYNCED", startDateIso = restored.startDateIso), restored)
     }
@@ -37,6 +38,8 @@ class CloudDtoTest {
         val wire = json.encodeToJsonElement(row.toCloud()).jsonObject
         assertEquals(setOf("id", "user_id", "activity_id", "activity_title", "category", "scheduled_time", "date_iso",
             "is_completed", "completed_hour", "completed_minute", "note", "updated_at"), wire.keys)
+        assertEquals(JsonPrimitive(1000L), wire.getValue("updated_at"))
+        assertEquals(owner, wire.getValue("user_id").jsonPrimitive.content)
         assertEquals(JsonNull, wire["note"])
         assertEquals(row.copy(syncStatus = "SYNCED"), json.decodeFromJsonElement<ActivityLogDto>(wire).toEntity())
     }

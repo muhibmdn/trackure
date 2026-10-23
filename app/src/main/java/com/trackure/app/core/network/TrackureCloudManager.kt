@@ -249,6 +249,7 @@ object TrackureCloudManager {
             }
             dao.upsertUserProfile(profile)
             dao.setActiveAccount(ActiveAccountEntity(userId = profile.id))
+            if (!profile.id.startsWith("local_")) dao.markWorkspacePendingUpload(profile.id)
         }
         prefs(context).edit().remove("upload_local_workspace").putBoolean("logged_out", false).putBoolean("local_active", profile.id.startsWith("local_")).commit()
         if (profile.id.startsWith("local_")) prefs(context).edit().putString("local_workspace", profile.id).commit()
@@ -269,38 +270,63 @@ object TrackureCloudManager {
             if (dao.activeUserId() != userId || !active.value) return@withLock false
             status.value = "Syncing with Supabase..."
             Log.d(TAG, "Starting upload/download")
-            dao.profileFor(userId)?.takeIf { it.syncStatus == "PENDING_UPLOAD" }?.let {
-                Log.d(TAG, "Upsert profiles")
-                cloud.from("profiles").upsert(it.toCloud())
-                dao.markProfileSynced(it.id, it.updatedAt)
+            var uploadFailed = false
+            var uploadedActivities = 0
+            var uploadedLogs = 0
+            runCatching {
+                dao.profileFor(userId)?.takeIf { it.syncStatus == "PENDING_UPLOAD" }?.let {
+                    Log.d(TAG, "Upsert profiles")
+                    cloud.from("profiles").upsert(it.toCloud())
+                    dao.markProfileSynced(it.id, it.updatedAt)
+                    Log.d(TAG, "Uploaded profile")
+                }
+            }.onFailure {
+                if (it is CancellationException) throw it
+                uploadFailed = true
+                Log.e(TAG, "Upload profiles failed; pending rows retained for retry", it)
             }
-            dao.activitiesFor(userId).forEach {
-                when (it.syncStatus) {
-                    "PENDING_UPLOAD" -> {
-                        Log.d(TAG, "Upsert activities id=" + it.id)
-                        cloud.from("activities").upsert(it.toCloud())
-                        dao.markActivitySynced(it.id, userId, it.updatedAt)
-                    }
-                    "PENDING_DELETE" -> {
-                        Log.d(TAG, "Delete activities id=" + it.id)
-                        cloud.from("activities").delete { filter { eq("id", it.id); eq("user_id", userId) } }
-                        dao.markActivityDeleted(it.id, userId, it.updatedAt)
+            runCatching {
+                dao.activitiesFor(userId).forEach {
+                    when (it.syncStatus) {
+                        "PENDING_UPLOAD" -> {
+                            Log.d(TAG, "Upsert activities id=" + it.id)
+                            cloud.from("activities").upsert(it.toCloud())
+                            dao.markActivitySynced(it.id, userId, it.updatedAt)
+                            uploadedActivities++
+                        }
+                        "PENDING_DELETE" -> {
+                            Log.d(TAG, "Delete activities id=" + it.id)
+                            cloud.from("activities").delete { filter { eq("id", it.id); eq("user_id", userId) } }
+                            dao.markActivityDeleted(it.id, userId, it.updatedAt)
+                        }
                     }
                 }
+            }.onFailure {
+                if (it is CancellationException) throw it
+                uploadFailed = true
+                Log.e(TAG, "Upload activities failed; pending rows retained for retry", it)
             }
-            dao.logsFor(userId).forEach {
-                when (it.syncStatus) {
-                    "PENDING_UPLOAD" -> {
-                        Log.d(TAG, "Upsert activity_logs id=" + it.id)
-                        cloud.from("activity_logs").upsert(it.toCloud())
-                        dao.markLogSynced(it.id, userId, it.updatedAt)
-                    }
-                    "PENDING_DELETE" -> {
-                        cloud.from("activity_logs").delete { filter { eq("id", it.id); eq("user_id", userId) } }
-                        dao.markLogDeleted(it.id, userId, it.updatedAt)
+            runCatching {
+                dao.logsFor(userId).forEach {
+                    when (it.syncStatus) {
+                        "PENDING_UPLOAD" -> {
+                            Log.d(TAG, "Upsert activity_logs id=" + it.id)
+                            cloud.from("activity_logs").upsert(it.toCloud())
+                            dao.markLogSynced(it.id, userId, it.updatedAt)
+                            uploadedLogs++
+                        }
+                        "PENDING_DELETE" -> {
+                            cloud.from("activity_logs").delete { filter { eq("id", it.id); eq("user_id", userId) } }
+                            dao.markLogDeleted(it.id, userId, it.updatedAt)
+                        }
                     }
                 }
+            }.onFailure {
+                if (it is CancellationException) throw it
+                uploadFailed = true
+                Log.e(TAG, "Upload activity_logs failed; pending rows retained for retry", it)
             }
+            Log.d(TAG, "Uploaded $uploadedActivities activities and $uploadedLogs logs")
             cloud.from("profiles").select { filter { eq("id", userId) } }.decodeList<ProfileDto>()
                 .filter { it.id == userId }.forEach { dao.mergeCloudProfile(it.toEntity()) }
             var offset = 0L
@@ -325,10 +351,11 @@ object TrackureCloudManager {
                 Log.d(TAG, "Pulled activity_logs rows=" + page.size)
                 offset += page.size
             } while (page.size == 500)
-            status.value = if (dao.getPendingSyncActivities().isEmpty() && dao.getPendingSyncLogs().isEmpty() &&
-                dao.profileFor(userId)?.syncStatus != "PENDING_UPLOAD") "Cloud Synced (Supabase Active)" else "Cloud sync pending"
-            Log.d(TAG, "Sync complete")
-            true
+            val fullySynced = !uploadFailed && dao.getPendingSyncActivities().isEmpty() && dao.getPendingSyncLogs().isEmpty() &&
+                dao.profileFor(userId)?.syncStatus != "PENDING_UPLOAD"
+            status.value = if (fullySynced) "Cloud Synced (Supabase Active)" else "Cloud sync pending"
+            Log.d(TAG, if (fullySynced) "Sync complete" else "Sync incomplete; pending rows will retry")
+            fullySynced
         } catch (e: CancellationException) { throw e
         } catch (e: Exception) {
             status.value = "Cloud sync pending - retry available"

@@ -1,5 +1,6 @@
 -- Flat-column schema used by CloudDtos.kt. Run in the project's SQL Editor.
--- This creates missing tables; it does not destroy/migrate legacy payload tables.
+-- Creates missing tables and converts the previous timestamptz updated_at to BIGINT milliseconds.
+-- Does not destroy/migrate legacy payload tables.
 -- IDs for activities/logs are text because local seed and imported ICS IDs are not UUIDs.
 begin;
 do $$
@@ -16,7 +17,7 @@ create table if not exists public.profiles (
     profile_url_or_email text not null default '',
     motto text not null default '',
     avatar_url text,
-    updated_at timestamptz not null default now()
+    updated_at bigint not null default (extract(epoch from now()) * 1000)::bigint
 );
 create table if not exists public.activities (
     id text not null,
@@ -33,7 +34,7 @@ create table if not exists public.activities (
     end_condition_type text not null,
     end_date text,
     end_occurrences integer,
-    updated_at timestamptz not null default now(),
+    updated_at bigint not null default (extract(epoch from now()) * 1000)::bigint,
     primary key (id, user_id)
 );
 -- Deliberately no activity FK: history survives deletion and daily notes have no parent.
@@ -49,9 +50,26 @@ create table if not exists public.activity_logs (
     completed_hour text,
     completed_minute text,
     note text,
-    updated_at timestamptz not null default now(),
+    updated_at bigint not null default (extract(epoch from now()) * 1000)::bigint,
     primary key (id, user_id)
 );
+-- Upgrade installations using the previous timestamptz schema without changing BIGINT values.
+do $$
+declare t text; column_type text;
+begin
+    foreach t in array array['profiles', 'activities', 'activity_logs'] loop
+        select data_type into column_type from information_schema.columns
+            where table_schema = 'public' and table_name = t and column_name = 'updated_at';
+        if column_type = 'timestamp with time zone' then
+            execute format('alter table public.%I alter column updated_at drop default', t);
+            execute format('alter table public.%I alter column updated_at type bigint using (extract(epoch from updated_at) * 1000)::bigint', t);
+        elsif column_type <> 'bigint' then
+            raise exception 'Unexpected updated_at type % in %', column_type, t;
+        end if;
+        execute format('alter table public.%I alter column updated_at set default (extract(epoch from now()) * 1000)::bigint', t);
+    end loop;
+end;
+$$;
 create index if not exists activities_user_idx on public.activities(user_id);
 create index if not exists activity_logs_user_idx on public.activity_logs(user_id);
 

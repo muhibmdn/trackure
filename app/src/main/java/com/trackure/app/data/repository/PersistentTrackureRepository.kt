@@ -11,6 +11,7 @@ import java.time.LocalDate
 import java.time.LocalTime
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.sync.withLock
 
 /** Reads for mutations happen inside Room transactions, independently of UI flow latency. */
 class PersistentTrackureRepository(
@@ -46,6 +47,9 @@ class PersistentTrackureRepository(
     override val isAuthenticatedOrLocalActive = com.trackure.app.core.network.TrackureCloudManager.isAuthenticatedOrLocalActive
     val syncStatus = com.trackure.app.core.network.TrackureCloudManager.syncStatus
     suspend fun syncNow(): Boolean = withContext(Dispatchers.IO) {
+        com.trackure.app.core.network.TrackureCloudManager.sessionMutex.withLock {
+            dao.markWorkspacePendingUpload(dao.activeUserId())
+        }
         immediateSync(dao)
     }
     suspend fun continueOffline(context: Context) = com.trackure.app.core.network.TrackureCloudManager.continueOffline(context)

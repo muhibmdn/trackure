@@ -8,6 +8,17 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface TrackureDao {
+    // Requeue one account without resurrecting deletions or changing row versions.
+    @androidx.room.Transaction
+    suspend fun markWorkspacePendingUpload(owner: String) {
+        markWorkspaceActivitiesPendingUpload(owner)
+        markWorkspaceLogsPendingUpload(owner)
+    }
+    @Query("UPDATE activities SET syncStatus = 'PENDING_UPLOAD' WHERE ownerId = :owner AND syncStatus NOT IN ('PENDING_DELETE', 'DELETED')")
+    suspend fun markWorkspaceActivitiesPendingUpload(owner: String)
+    @Query("UPDATE activity_logs SET syncStatus = 'PENDING_UPLOAD' WHERE ownerId = :owner AND syncStatus NOT IN ('PENDING_DELETE', 'DELETED')")
+    suspend fun markWorkspaceLogsPendingUpload(owner: String)
+
     @Query("DELETE FROM activities WHERE ownerId = :owner")
     suspend fun removeWorkspaceActivities(owner: String)
     @Query("DELETE FROM activity_logs WHERE ownerId = :owner")

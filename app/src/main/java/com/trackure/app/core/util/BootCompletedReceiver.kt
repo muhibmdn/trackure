@@ -20,7 +20,7 @@ class BootCompletedReceiver : BroadcastReceiver() {
 }
 
 internal fun enqueueAlarmRecovery(context: Context) {
-    WorkManager.getInstance(context).enqueueUniqueWork("recover-lockscreen-alarms", ExistingWorkPolicy.REPLACE,
+    WorkManager.getInstance(context).enqueueUniqueWork("recover-lockscreen-alarms", ExistingWorkPolicy.KEEP,
         OneTimeWorkRequestBuilder<AlarmRecoveryWorker>().build())
 }
 
