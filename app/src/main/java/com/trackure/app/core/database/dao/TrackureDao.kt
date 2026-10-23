@@ -8,6 +8,30 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface TrackureDao {
+    @Query("DELETE FROM activities WHERE ownerId = :owner")
+    suspend fun removeWorkspaceActivities(owner: String)
+    @Query("DELETE FROM activity_logs WHERE ownerId = :owner")
+    suspend fun removeWorkspaceLogs(owner: String)
+
+    @androidx.room.Transaction
+    suspend fun mergeCloudProfile(row: UserProfileEntity) {
+        val old = profileFor(row.id)
+        if (old == null || (old.syncStatus == "SYNCED" && row.updatedAt >= old.updatedAt)) upsertUserProfile(row)
+    }
+    @androidx.room.Transaction
+    suspend fun mergeCloudActivity(row: ActivityEntity) {
+        val old = activitiesFor(row.ownerId).find { it.id == row.id }
+        if (old == null || (old.syncStatus == "SYNCED" && row.updatedAt >= old.updatedAt))
+            upsertActivity(if (old == null) row else row.copy(startDateIso = old.startDateIso, repeatOnSpecificDate = old.repeatOnSpecificDate))
+    }
+    @androidx.room.Transaction
+    suspend fun mergeCloudLog(row: ActivityLogEntity) {
+        val old = logsFor(row.ownerId).find { it.id == row.id || (it.activityId == row.activityId && it.dateIso == row.dateIso) }
+        if (old == null || (old.syncStatus == "SYNCED" && row.updatedAt >= old.updatedAt)) {
+            if (old != null && old.id != row.id) removeLog(old.id, row.ownerId)
+            upsertActivityLog(row)
+        }
+    }
     @Query("SELECT * FROM user_profile WHERE id = COALESCE((SELECT userId FROM active_account WHERE slot = 0), 'local_user')")
     fun observeUserProfile(): Flow<UserProfileEntity?>
     @Query("SELECT * FROM user_profile WHERE id = COALESCE((SELECT userId FROM active_account WHERE slot = 0), 'local_user')")

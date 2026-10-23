@@ -10,7 +10,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import com.trackure.app.data.repository.PersistentTrackureRepository
 import com.trackure.app.core.network.TrackureSyncWorker
-import com.trackure.app.core.network.LocalAccountFallback
 import kotlinx.coroutines.launch
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -55,7 +54,10 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             TrackureTheme {
-                TrackureMainAppShell()
+                val repository = remember { PersistentTrackureRepository.getInstance(applicationContext) }
+                val active by repository.isAuthenticatedOrLocalActive.collectAsStateWithLifecycle()
+                if (active) TrackureMainAppShell()
+                else com.trackure.app.presentation.auth.AuthScreen(repository)
             }
         }
     }
@@ -79,6 +81,8 @@ fun TrackureMainAppShell() {
         }
     }
     val profile by repository.userProfile.collectAsStateWithLifecycle()
+    val syncStatus by repository.syncStatus.collectAsStateWithLifecycle()
+    var syncing by remember { mutableStateOf(false) }
     var currentTab by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(TrackureTab.HOME) }
     val viewModel: com.trackure.app.presentation.TrackureViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
         key = profile.id,
@@ -94,24 +98,9 @@ fun TrackureMainAppShell() {
     val savingProfile by viewModel.home.isSaving.collectAsStateWithLifecycle()
     var showProfileSheet by rememberSaveable { mutableStateOf(false) }
     var showEditProfile by rememberSaveable { mutableStateOf(false) }
-    var showConnectAccount by rememberSaveable { mutableStateOf(false) }
     var accountBusy by remember { mutableStateOf(false) }
     val accountScope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
-    fun connect(forcePicker: Boolean) {
-        if (accountBusy) return
-        showProfileSheet = false
-        accountBusy = true
-        accountScope.launch {
-            try {
-                val result = if (forcePicker) repository.switchGoogleAccount(activityContext)
-                    else repository.signInGoogleAccount(activityContext)
-                if (result.exceptionOrNull() is LocalAccountFallback) showConnectAccount = true
-                else if (result.isSuccess) snackbar.showSnackbar("Account connected")
-                else snackbar.showSnackbar("Unable to connect account. Please try again.")
-            } finally { accountBusy = false }
-        }
-    }
     LaunchedEffect(viewModel) {
         viewModel.home.events.collect { snackbar.showSnackbar(it) }
     }
@@ -160,18 +149,30 @@ fun TrackureMainAppShell() {
             modifier = Modifier.border(1.dp, SurfaceBorder, RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)),
         ) {
             ProfileSheet(profile,
+                syncStatus = syncStatus,
+                syncing = syncing,
+                onSyncNow = {
+                    syncing = true
+                    accountScope.launch {
+                        try {
+                            val success = repository.syncNow()
+                            com.trackure.app.core.util.enqueueAlarmRecovery(context)
+                            snackbar.showSnackbar(if (success) "Sync complete" else "Sync unavailable. Your changes are saved locally.")
+                        } finally { syncing = false }
+                    }
+                },
                 onEdit = { showProfileSheet = false; showEditProfile = true },
-                onSwitchAccount = { connect(true) },
-                onLogin = { connect(false) },
+                onSwitchAccount = { accountScope.launch { repository.logout() } },
+                onLogin = { accountScope.launch { repository.logout() } },
                 onLogout = {
                     showProfileSheet = false
                     accountBusy = true
                     accountScope.launch {
                         try {
                             repository.logout()
-                            Toast.makeText(context, "Logged out. Local tracking is available.", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "Logged out.", Toast.LENGTH_SHORT).show()
                         } catch (e: kotlinx.coroutines.CancellationException) { throw e
-                        } catch (_: Exception) { snackbar.showSnackbar("Cloud sign-out could not finish. Local tracking remains available.")
+                        } catch (_: Exception) { snackbar.showSnackbar("Sign-out cleanup could not finish. Please try again.")
                         } finally { accountBusy = false }
                     }
                 },
@@ -183,21 +184,7 @@ fun TrackureMainAppShell() {
             viewModel.home.updateProfile(name, link, motto) { showEditProfile = false }
         }
     }
-    if (showConnectAccount) {
-        EditProfileDialog(profile, accountBusy, { showConnectAccount = false },
-            title = "Switch / Connect Account", requireLink = true) { name, link, motto ->
-            accountBusy = true
-            accountScope.launch {
-                try {
-                    repository.connectLocalAccount(context, name, link, motto)
-                    showConnectAccount = false
-                    snackbar.showSnackbar("Local account ready. Changes are saved on this device.")
-                } catch (e: kotlinx.coroutines.CancellationException) { throw e
-                } catch (_: Exception) { snackbar.showSnackbar("Unable to save account. Please try again.")
-                } finally { accountBusy = false }
-            }
-        }
-    }
+
 }
 @Composable
 fun TrackureBottomBar(

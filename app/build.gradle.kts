@@ -11,7 +11,10 @@ plugins {
 val localProps = Properties().apply {
     rootProject.file("local.properties").takeIf { it.isFile }?.inputStream()?.use { load(it) }
 }
-fun getLocalProperty(key: String): String = localProps.getProperty(key, "").trim().removeSurrounding("\"")
+fun getLocalProperty(key: String): String {
+    val value = localProps.getProperty(key, "").trim().trim('"', '\'').trim()
+    return if (key == "SUPABASE_URL") value.trimEnd('/').removeSuffix("/rest/v1").trimEnd('/') else value
+}
 fun buildConfigString(key: String): String = "\"" + getLocalProperty(key)
     .replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "\\r") + "\""
 

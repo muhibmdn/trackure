@@ -21,6 +21,8 @@ class InMemoryTrackureRepository private constructor(private val today: LocalDat
         val shared: TrackureRepository by lazy { create() }
         fun create(today: LocalDate = demoDate) = InMemoryTrackureRepository(today)
     }
+    override val isAuthenticatedOrLocalActive = MutableStateFlow(true).asStateFlow()
+    override suspend fun deleteActivity(id: String) = mutex.withLock { items.value = items.value.filterNot { it.id == id } }
     private val mutex = Mutex()
     private val profile = MutableStateFlow(UserProfile(name = "Muhib Mdn", profileUrlOrEmail = "https://github.com/muhibmdn", motto = "One Sure Step Everyday"))
     override val userProfile = profile.asStateFlow()
@@ -30,7 +32,7 @@ class InMemoryTrackureRepository private constructor(private val today: LocalDat
         ActivityItem(title = "Easy 5K Recovery Run", scheduledTime = "16:30", category = "Cardio"),
         ActivityItem(title = "Review Catatan Kuliah & Prep", scheduledTime = "20:00", category = "Deep Work"),
         ActivityItem(title = "Mobility & Sleep Routine", scheduledTime = "22:00", category = "Wellness"),
-    ))
+    ).map { it.copy(startDateIso = today.toString()) })
     override val activities = items.asStateFlow()
     private val logs = MutableStateFlow(items.value.mapIndexed { index, item ->
         val times = listOf("07:12", "09:05", "17:15")

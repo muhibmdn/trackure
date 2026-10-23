@@ -34,7 +34,7 @@ class SharedActionsIntegrationTest {
             assertTrue(profileSaved)
             assertEquals("Updated Name", repository.userProfile.value.name)
 
-            val activity = ActivityItem(title = "Shared scheduled item", scheduledTime = "18:00")
+            val activity = ActivityItem(title = "Shared scheduled item", scheduledTime = "18:00", startDateIso = today.toString())
             add.save(activity)
             withTimeout(2_000) { tracker.uiState.first { state -> state.rows.any { it.activity.id == activity.id } } }
             withTimeout(2_000) { home.uiState.first { it.totalCount == 6 } }

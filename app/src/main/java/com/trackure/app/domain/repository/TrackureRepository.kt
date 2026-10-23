@@ -7,6 +7,8 @@ import kotlinx.coroutines.flow.StateFlow
  * Replacing the implementation is a composition-root change, independent of Compose screens.
  */
 interface TrackureRepository {
+    val isAuthenticatedOrLocalActive: StateFlow<Boolean>
+    suspend fun deleteActivity(id: String)
     val userProfile: StateFlow<UserProfile>
     val activities: StateFlow<List<ActivityItem>>
     val activityLogs: StateFlow<List<ActivityLog>>

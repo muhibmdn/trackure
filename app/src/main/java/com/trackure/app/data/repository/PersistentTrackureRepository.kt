@@ -15,12 +15,14 @@ import kotlinx.coroutines.flow.*
 /** Reads for mutations happen inside Room transactions, independently of UI flow latency. */
 class PersistentTrackureRepository(
     private val database: TrackureDatabase,
-    scope: CoroutineScope,
+    private val scope: CoroutineScope,
     private val dateProvider: () -> LocalDate = { LocalDate.now() },
     private val alarmScheduler: LockscreenAlarmScheduler = DeferredLockscreenAlarmScheduler,
     private val onDataChanged: () -> Unit = {},
     private val signOut: (suspend () -> Unit)? = null,
     private val onAlarmRecovery: () -> Unit = {},
+    private val immediateSync: suspend (com.trackure.app.core.database.dao.TrackureDao) -> Boolean =
+        com.trackure.app.core.network.TrackureCloudManager::syncAllPendingToSupabase,
 ) : TrackureRepository {
     companion object {
         @Volatile private var instance: PersistentTrackureRepository? = null
@@ -30,10 +32,28 @@ class PersistentTrackureRepository(
                 CoroutineScope(SupervisorJob() + Dispatchers.IO), alarmScheduler = AndroidLockscreenAlarmScheduler(appContext),
                 onDataChanged = { com.trackure.app.core.network.TrackureSyncWorker.enqueueOneTimeSync(appContext) },
                 signOut = { com.trackure.app.core.network.TrackureCloudManager.signOut(appContext) },
-                onAlarmRecovery = { enqueueAlarmRecovery(appContext) }).also { instance = it }
+                onAlarmRecovery = { enqueueAlarmRecovery(appContext) }).also { repository ->
+                    instance = repository
+                    repository.scope.launch {
+                        com.trackure.app.core.network.TrackureCloudManager.initialize(appContext)
+                        repository.requestSync()
+                    }
+                }
         }
         private val defaultProfile = UserProfile(id = "local_user", name = "Muhib Mdn",
             profileUrlOrEmail = "https://github.com/muhibmdn", motto = "One Sure Step Everyday")
+    }
+    override val isAuthenticatedOrLocalActive = com.trackure.app.core.network.TrackureCloudManager.isAuthenticatedOrLocalActive
+    val syncStatus = com.trackure.app.core.network.TrackureCloudManager.syncStatus
+    suspend fun syncNow(): Boolean = withContext(Dispatchers.IO) {
+        immediateSync(dao)
+    }
+    suspend fun continueOffline(context: Context) = com.trackure.app.core.network.TrackureCloudManager.continueOffline(context)
+    suspend fun authenticateEmail(context: Context, email: String, password: String, name: String, register: Boolean) =
+        com.trackure.app.core.network.TrackureCloudManager.authenticateEmail(context, email, password, name, register)
+    override suspend fun deleteActivity(id: String) {
+        persistAndSync { dao.deleteActivity(id) }
+        withContext(Dispatchers.IO) { alarmScheduler.cancelTrigger(id) }
     }
     private val dao = database.trackureDao()
     private fun nextTimestamp(previous: String?) = Instant.ofEpochMilli(
@@ -41,6 +61,9 @@ class PersistentTrackureRepository(
     ).toString()
     // Enqueue only after the transaction commits. Failed scheduling never rolls back user data.
     private fun requestSync() {
+        scope.launch(Dispatchers.IO) {
+            immediateSync(dao)
+        }
         try { onDataChanged() }
         catch (e: CancellationException) { throw e }
         catch (e: Exception) { android.util.Log.w("TrackureRepository", "Sync enqueue failed; pending data will retry at startup", e) }

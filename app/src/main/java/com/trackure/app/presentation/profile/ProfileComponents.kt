@@ -28,7 +28,7 @@ import com.trackure.app.domain.model.UserProfile
 import com.trackure.app.ui.theme.*
 
 @Composable
-internal fun ProfileSheet(profile: UserProfile, onEdit: () -> Unit, onSwitchAccount: () -> Unit, onLogout: () -> Unit, onLogin: () -> Unit = onSwitchAccount) {
+internal fun ProfileSheet(profile: UserProfile, onEdit: () -> Unit, onSwitchAccount: () -> Unit, onLogout: () -> Unit, onLogin: () -> Unit = onSwitchAccount, syncStatus: String = "Local Mode", syncing: Boolean = false, onSyncNow: () -> Unit = {}) {
     val uriHandler = LocalUriHandler.current
     var linkError by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -52,9 +52,13 @@ internal fun ProfileSheet(profile: UserProfile, onEdit: () -> Unit, onSwitchAcco
                 }
             }
         }
+        Text(syncStatus, color = if (syncStatus == "Cloud Synced (Supabase Active)") Color(0xFF00E676) else Color(0xFF94A3B8), fontSize = 12.sp)
+        if (!profile.id.startsWith("local_")) {
+            OutlinedButton(onSyncNow, Modifier.fillMaxWidth(), enabled = !syncing) { Text(if (syncing) "Syncing..." else "Sync Now") }
+        }
         if (profile.id.startsWith("local_")) {
             Text("Local profile · available offline", color = TextSecondary, fontSize = 12.sp)
-            OutlinedButton(onLogin, Modifier.fillMaxWidth()) { Text("Login with Google") }
+            OutlinedButton(onLogin, Modifier.fillMaxWidth()) { Text("Sign In / Register") }
         }
         listOf(Triple("Edit Profile", TextPrimary, onEdit), Triple("Switch Account", SportyBluePrimary, onSwitchAccount), Triple("Log Out", StravaOrangeHighlight, onLogout)).forEach { (label, color, action) ->
             OutlinedButton(action, Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), border = BorderStroke(1.dp, SurfaceBorder), colors = ButtonDefaults.outlinedButtonColors(containerColor = BackgroundCanvas, contentColor = color)) { Text(label, Modifier.fillMaxWidth().padding(vertical = 6.dp)) }

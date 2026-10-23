@@ -13,6 +13,59 @@ import org.junit.Test
 import java.time.LocalDate
 
 class PersistentRepositoryTest {
+    @Test fun immediateSyncReadsCommittedDataWithoutBlockingSaveAndDelete() = runBlocking {
+        val db = Room.inMemoryDatabaseBuilder(InstrumentationRegistry.getInstrumentation().targetContext,
+            TrackureDatabase::class.java).build()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val observed = kotlinx.coroutines.channels.Channel<String>(kotlinx.coroutines.channels.Channel.UNLIMITED)
+        val release = CompletableDeferred<Unit>()
+        val repo = PersistentTrackureRepository(db, scope, immediateSync = { dao ->
+            observed.send(dao.activitiesFor("local_user").single().syncStatus)
+            release.await()
+            true
+        })
+        try {
+            withTimeout(5_000) {
+                repo.saveActivity(ActivityItem(id = "direct-sync", title = "Run", scheduledTime = "07:00"))
+                assertEquals("PENDING_UPLOAD", observed.receive())
+                repo.deleteActivity("direct-sync")
+                assertEquals("PENDING_DELETE", observed.receive())
+                assertNull(db.trackureDao().getActivityOnce("direct-sync"))
+                // Both saves returned although the network callbacks are still suspended.
+                assertFalse(release.isCompleted)
+            }
+        } finally {
+            release.complete(Unit)
+            scope.cancel()
+            scope.coroutineContext[Job]!!.join()
+            db.close()
+        }
+    }
+
+    @Test fun cloudMergeCannotClobberPendingEditsOrDeletedActivities() = runBlocking {
+        val db = Room.inMemoryDatabaseBuilder(InstrumentationRegistry.getInstrumentation().targetContext,
+            TrackureDatabase::class.java).build()
+        try {
+            val dao = db.trackureDao()
+            val row = com.trackure.app.core.database.entity.ActivityEntity("merge", "Local edit", null, "07:00",
+                false, true, "DAILY", "", null, 1, "NEVER", null, null, "PENDING_UPLOAD", 10,
+                startDateIso = "2026-01-01")
+            dao.upsertActivity(row)
+            val incoming = row.copy(title = "Remote", syncStatus = "SYNCED", updatedAt = 20, startDateIso = "2026-10-23")
+            dao.mergeCloudActivity(incoming)
+            assertEquals("Local edit", dao.getActivityOnce(row.id)!!.title)
+            dao.markActivitySynced(row.id, row.ownerId, 10)
+            dao.mergeCloudActivity(incoming)
+            assertEquals("Remote", dao.getActivityOnce(row.id)!!.title)
+            assertEquals("2026-01-01", dao.getActivityOnce(row.id)!!.startDateIso)
+            dao.deleteActivity(row.id)
+            val deleted = dao.activitiesFor(row.ownerId).single()
+            dao.markActivityDeleted(row.id, row.ownerId, deleted.updatedAt)
+            dao.mergeCloudActivity(incoming.copy(updatedAt = Long.MAX_VALUE))
+            assertNull(dao.getActivityOnce(row.id))
+        } finally { db.close() }
+    }
+
     @Test fun writesPublishReactiveStateSchedulePersistedActivitiesAndQueueSync() = runBlocking {
         val db = Room.inMemoryDatabaseBuilder(InstrumentationRegistry.getInstrumentation().targetContext,
             TrackureDatabase::class.java).build()
