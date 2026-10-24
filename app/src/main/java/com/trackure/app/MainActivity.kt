@@ -128,17 +128,14 @@ fun TrackureMainAppShell(requestedTab: String? = null, onTabOpened: () -> Unit =
         containerColor = BackgroundCanvas,
         topBar = {
             TopAppBar(
-                title = { Text("TRACKURE", fontWeight = FontWeight.ExtraBold, fontSize = 20.sp, color = TextPrimary) },
+                title = { com.trackure.app.presentation.components.TrackureBrand() },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = BackgroundCanvas),
                 actions = {
                     IconButton(
                         onClick = { showProfileSheet = true },
                         modifier = Modifier.padding(end = 8.dp).semantics { contentDescription = "Open Profile & Settings" },
                     ) {
-                        Box(Modifier.size(36.dp).clip(CircleShape).background(SurfaceCard).border(1.dp, SurfaceBorder, CircleShape), contentAlignment = Alignment.Center) {
-                            Text(profile.name.split(" ").filter { it.isNotBlank() }.take(2).joinToString("") { it.take(1).uppercase() },
-                                color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                        }
+                        com.trackure.app.presentation.components.ProfileAvatar(profile)
                     }
                 },
             )

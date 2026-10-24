@@ -53,7 +53,7 @@ fun AuthScreen(repository: PersistentTrackureRepository) {
         Column(Modifier.safeDrawingPadding().imePadding().verticalScroll(rememberScrollState())
             .padding(horizontal = 24.dp, vertical = 40.dp).widthIn(max = 480.dp),
             horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(24.dp)) {
-            Text("TRACKURE", fontWeight = FontWeight.Black, fontSize = 36.sp, letterSpacing = 4.sp, color = Color.White)
+            com.trackure.app.presentation.components.TrackureBrand(prominent = true)
             Text("One Sure Step Everyday", fontFamily = FontFamily.Monospace, fontSize = 13.sp, color = Color(0xFF00B0FF))
             Spacer(Modifier.height(12.dp))
             Text("Your next step starts here.", color = Color(0xFF94A3B8))

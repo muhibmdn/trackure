@@ -71,6 +71,8 @@ android {
 }
 
 dependencies {
+    implementation(libs.coil.compose)
+    implementation(libs.coil.network.okhttp)
     // Deklarasi tunggal Compose BOM agar tidak terdeteksi ganda oleh linter AGP 9.4.1
     val composeBom = platform(libs.androidx.compose.bom)
     implementation(composeBom)

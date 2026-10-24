@@ -35,10 +35,7 @@ internal fun ProfileSheet(profile: UserProfile, onEdit: () -> Unit, onSwitchAcco
         Text("Profile & Settings", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 18.sp)
         Surface(color = BackgroundCanvas, shape = RoundedCornerShape(12.dp), border = BorderStroke(1.dp, SurfaceBorder)) {
             Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                // Initials are the offline avatar for the seed profile (avatarUrl = null).
-                Box(Modifier.size(56.dp).background(SurfaceBorder, CircleShape), contentAlignment = Alignment.Center) {
-                    Text(profile.name.split(" ").filter { it.isNotEmpty() }.take(2).joinToString("") { it.take(1) }, color = TextPrimary, fontWeight = FontWeight.Bold)
-                }
+                com.trackure.app.presentation.components.ProfileAvatar(profile, 56.dp)
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(profile.name, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
                     Text(profile.profileUrlOrEmail.removePrefix("https://"), fontFamily = FontFamily.Monospace, fontSize = 12.sp, color = SportyBluePrimary,

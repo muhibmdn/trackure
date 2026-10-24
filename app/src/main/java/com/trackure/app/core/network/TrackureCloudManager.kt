@@ -67,7 +67,17 @@ object TrackureCloudManager {
         try {
             val cloud = client
             cloud?.auth?.awaitInitialization()
-            active.value = cloud?.auth?.currentUserOrNull()?.id == owner
+            val user = cloud?.auth?.currentUserOrNull()
+            active.value = user?.id == owner
+            if (active.value && user != null) {
+                val dao = TrackureDatabase.getInstance(context).trackureDao()
+                val photo = accountAvatar(user.userMetadata)
+                val profile = dao.profileFor(owner)
+                if (profile != null && photo != null && photo != profile.avatarUrl) {
+                    dao.upsertUserProfile(profile.copy(avatarUrl = photo, syncStatus = "PENDING_UPLOAD",
+                        updatedAt = maxOf(System.currentTimeMillis(), profile.updatedAt + 1)))
+                }
+            }
         } catch (e: CancellationException) { throw e
         } catch (e: Exception) {
             active.value = false
@@ -99,9 +109,12 @@ object TrackureCloudManager {
                 return@withLock false
             }
             val old = TrackureDatabase.getInstance(context).trackureDao().profileFor(user.id)
-            activate(context, old ?: UserProfileEntity(user.id,
+            val photo = accountAvatar(user.userMetadata) ?: old?.avatarUrl
+            val profile = old ?: UserProfileEntity(user.id,
                 user.userMetadata?.get("name")?.jsonPrimitive?.contentOrNull ?: name.ifBlank { email.substringBefore('@') },
-                email.trim(), "One Sure Step Everyday", null, System.currentTimeMillis()))
+                email.trim(), "One Sure Step Everyday", photo, System.currentTimeMillis())
+            activate(context, if (photo != profile.avatarUrl) profile.copy(avatarUrl = photo,
+                updatedAt = maxOf(System.currentTimeMillis(), profile.updatedAt + 1), syncStatus = "PENDING_UPLOAD") else profile)
             Log.d(TAG, "Email authentication succeeded")
             true
         }
@@ -188,7 +201,7 @@ object TrackureCloudManager {
         val dao = database.trackureDao()
         val local = dao.profileFor(localId(email))
         val localProfile = UserProfileEntity(localId(email), displayName?.takeIf { it.isNotBlank() } ?: email,
-            email, local?.motto ?: "One Sure Step Everyday", avatarUrl, System.currentTimeMillis())
+            email, local?.motto ?: "One Sure Step Everyday", avatarUrl ?: local?.avatarUrl, System.currentTimeMillis())
         // Commit identity and the local workspace BEFORE attempting the cloud exchange.
         activate(context, localProfile, publishActive = false, transferLocalWorkspace = true, database = database)
         val userId = try {
@@ -205,6 +218,7 @@ object TrackureCloudManager {
         }
         val old = dao.profileFor(userId)
         val cloudProfile = localProfile.copy(id = userId, motto = old?.motto ?: localProfile.motto,
+            avatarUrl = localProfile.avatarUrl ?: old?.avatarUrl,
             updatedAt = maxOf(System.currentTimeMillis(), (old?.updatedAt ?: 0) + 1))
         activate(context, cloudProfile, database = database)
         requestSync()
@@ -221,6 +235,11 @@ object TrackureCloudManager {
     }
 
     private fun localId(link: String) = "local_" + UUID.nameUUIDFromBytes(link.trim().lowercase(java.util.Locale.ROOT).toByteArray(Charsets.UTF_8))
+
+    private fun accountAvatar(metadata: JsonObject?): String? =
+        sequenceOf("avatar_url", "picture").mapNotNull { key ->
+            (metadata?.get(key) as? JsonPrimitive)?.contentOrNull?.takeIf { it.startsWith("https://") }
+        }.firstOrNull()
 
     private suspend fun activate(context: Context, profile: UserProfileEntity,
         publishActive: Boolean = true, transferLocalWorkspace: Boolean = !profile.id.startsWith("local_"),
